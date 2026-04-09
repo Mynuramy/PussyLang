@@ -27,7 +27,7 @@ public class Disassembler {
 
         int line = chunk.lineAt(offset);
         if (offset > 0 && line == chunk.lineAt(offset - 1)) System.out.print("   | ");
-        else                                                  System.out.printf("%4d ", line);
+        else  System.out.printf("%4d ", line);
 
         OpCode op = OpCode.values()[code[offset] & 0xFF];
 
