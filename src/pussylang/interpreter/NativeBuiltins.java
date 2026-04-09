@@ -82,7 +82,7 @@ public class NativeBuiltins {
             for (int j = 0; j < count; j++) {
                 UNSAFE.putByte(ptr + j, data[j]);
             }
-            System.out.printf("[write] %d bytes → 0x%X%n", count, ptr);
+            System.out.printf("[write] %d bytes -> 0x%X%n", count, ptr);
             return null;
         }
     }
@@ -99,15 +99,15 @@ public class NativeBuiltins {
             for (int j = 0; j < size; j++) {
                 buf[j] = UNSAFE.getByte(ptr + j);
             }
-            System.out.printf("[read] %d bytes ← 0x%X%n", size, ptr);
+            System.out.printf("[read] %d bytes <- 0x%X%n", size, ptr);
             return buf;
         }
     }
 
     /**
-     * exec(ptr) , marks memory executable and runs it via JNI trampoline.
-     * WIP: real execution requires a native agent or JNI bridge;
-     *       this stub logs and simulates until you wire up the native layer.
+     * exec(ptr)  marks memory executable and runs it via JNI trampoline.
+     * WIP:  a real execution requires a native agent or JNI bridge;
+     *       this stub logs and simulates until I wire up the native layer.
      */
     static class Exec implements PussyCallable {
         @Override public int arity()  { return 1; }
