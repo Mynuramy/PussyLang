@@ -69,7 +69,7 @@ public class NativeRegistry {
             byte[] data  = bytes(a.get(1));
             int    count = (int) Math.min(num(a.get(2)), data.length);
             for (int i = 0; i < count; i++) UNSAFE.putByte(ptr + i, data[i]);
-            System.out.printf("[write] %d bytes → 0x%X%n", count, ptr);
+            System.out.printf("[write] %d bytes -> 0x%X%n", count, ptr);
             return null;
         }
     }
@@ -82,7 +82,7 @@ public class NativeRegistry {
             int    size = (int) num(a.get(1));
             byte[] buf  = new byte[size];
             for (int i = 0; i < size; i++) buf[i] = UNSAFE.getByte(ptr + i);
-            System.out.printf("[read] %d bytes ← 0x%X%n", size, ptr);
+            System.out.printf("[read] %d bytes <- 0x%X%n", size, ptr);
             return buf;
         }
     }
