@@ -33,10 +33,7 @@ var sc = b"\x90\x90\xCC";
 print len(sc);
 print hex(0xDEAD);
 
-var buf = alloc(0x1000);
-write(buf, sc, 3);
-exec(buf);
-free(buf);
+
 ```
 
 **Output:**
@@ -45,10 +42,7 @@ free(buf);
 720
 3
 0xDEAD
-[alloc] 4096 bytes @ 0x16D0C345B00
-[write] 3 bytes -> 0x16D0C345B00
-[exec] shellcode @ 0x16D0C345B00
-[free] 0x16D0C345B00
+
 ```
 
 ## Running the Language
