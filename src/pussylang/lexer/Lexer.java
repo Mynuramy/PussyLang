@@ -174,6 +174,7 @@ public class Lexer {
 
     private void skipLineComment() {
         while (!isAtEnd() && peek() != '\n') advance();
+        if (!isAtEnd()) { advance(); line++; }   // consume \n
     }
 
     private void skipBlockComment() {
