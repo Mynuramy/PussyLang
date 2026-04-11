@@ -3,57 +3,64 @@
 
 # PussyLang
 
-A lightweight scripting language designed for **malware development**, **red teaming**, and **low-level systems programming**.
+A lightweight scripting language designed for sexy stuff.
 
 ![Status](https://img.shields.io/badge/Status-Early%20Development-red.svg)
 
 
-## Features
+## Features(some WIP)
 
-- Fast bytecode VM with a simple compiler
-- C-like syntax with a few touches
-- Native support for **byte strings** (`b"\x90\x90\xCC"`)
-- Hex literals (`0xDEAD`)
-- Built-in memory manipulation: `alloc`, `write`, `exec`, `free` (WIP!!!)
-- Functions, recursion, control flow (`if`, `while`) (WIPPP!!!)
-- Switchable execution with a tree walk interpreter or bytecode compiler
-- Easy to extend with native functions
+| Category                | Supported                                                                               |
+|-------------------------|-----------------------------------------------------------------------------------------|
+| **Data Types**          | Numbers (double & hex), booleans, `null`, strings, byte strings (`b"\x90\x90"`)          |
+| **Control Flow**        | `if` / `else`, `while` loops                                                            |
+| **Functions**           | First class functions, recursion, **lexical closures** with mutable upvalues             |
+| **Variable Scoping**    | Blockscoped `var` declarations, proper shadowing                                       |
+| **Execution Engines**   | Treewalk interpreter  and a **bytecode VM** with closure support             |
+| **Tooling**             | Bytecode disassembler, error messages with line numbers                                  |
+| **Native Interface**    | Easily add Java‑backed builtins                                                         |
+| **Maldev Primitives**   | `alloc`, `free`, `write`, `exec`, `read` (WIPPPPP)                                       |
 
-## Demo
+## Example
 
 ```pussy
-func factorial(n) {
-    if (n <= 1) { return 1; }
-    return n * factorial(n - 1);
+// Variables
+var x = 10;
+x = x + 5;
+
+// Control flow
+if (x > 10) {
+    print "big";
+} else {
+    print "small";
 }
 
-print factorial(6);
+while (x < 20) {
+    print x;
+    x = x + 1;
+}
 
-var sc = b"\x90\x90\xCC";
-print len(sc);
-print hex(0xDEAD);
+// Functions and Closures
+func makeCounter() {
+    var count = 0;
+    func inc() {
+        count = count + 1;
+        return count;
+    }
+    return inc;
+}
 
-var buf = alloc(0x1000);
-write(buf, sc, 3);
-exec(buf);
-free(buf);
+var c = makeCounter();
+print c();  // 1
+print c();  // 2
 ```
 
-**Output:**
 
-```
-720
-3
-0xDEAD
-[alloc] 4096 bytes @ 0x16D0C345B00
-[write] 3 bytes -> 0x16D0C345B00
-[exec] shellcode @ 0x16D0C345B00
-[free] 0x16D0C345B00
-```
+
 
 ## Running the Language
 
-### Run a script file
+### Run a script file(on VM)
 ```bash
 java pussylang.Main example.pussy
 ```

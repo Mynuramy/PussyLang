@@ -57,7 +57,7 @@ public class Compiler implements ExprVisitor<Void>, StmtVisitor<Void> {
         this.enclosing = enclosing;
     }
 
-    /** Compile a toplevel script into a Chunk. */
+    
     public Chunk compileScript(List<Stmt> stmts) {
         chunk = new Chunk("<script>", 0);
         for (Stmt s : stmts) if (s != null) compileStmt(s);
@@ -65,7 +65,7 @@ public class Compiler implements ExprVisitor<Void>, StmtVisitor<Void> {
         return chunk;
     }
 
-    /** Compile a function body into its own Chunk. */
+   
     Chunk compileFunctionBody(FuncStmt func) {
         chunk = new Chunk(func.name().lexeme(), func.params().size());
         scopeDepth = 1;
