@@ -14,11 +14,11 @@ A lightweight scripting language designed for sexy stuff.
 |-------------------------|-----------------------------------------------------------------------------------------|
 | **Data Types**          | Numbers (double & hex), booleans, `null`, strings, byte strings (`b"\x90\x90"`)          |
 | **Control Flow**        | `if` / `else`, `while` loops                                                            |
-| **Functions**           | First‑class functions, recursion, **lexical closures** with mutable upvalues             |
+| **Functions**           | First class functions, recursion, **lexical closures** with mutable upvalues             |
 | **Variable Scoping**    | Blockscoped `var` declarations, proper shadowing                                       |
-| **Execution Engines**   | Treewalk interpreter (reference) and a **bytecode VM** with closure support             |
+| **Execution Engines**   | Treewalk interpreter  and a **bytecode VM** with closure support             |
 | **Tooling**             | Bytecode disassembler, error messages with line numbers                                  |
-| **Native Interface**    | Easily add Java‑backed built‑ins                                                         |
+| **Native Interface**    | Easily add Java‑backed builtins                                                         |
 | **Maldev Primitives**   | `alloc`, `free`, `write`, `exec`, `read` (WIPPPPP)                                       |
 
 ## Example
