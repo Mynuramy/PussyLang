@@ -28,12 +28,8 @@ public class Interpreter implements ExprVisitor<Object>, StmtVisitor<Void> {
 
 
     public void interpret(List<Stmt> statements) {
-        try {
-            for (Stmt stmt : statements) {
-                if (stmt != null) execute(stmt);
-            }
-        } catch (RuntimeError e) {
-            System.err.println("[runtime error] " + e.getMessage());
+        for (Stmt stmt : statements) {
+            if (stmt != null) execute(stmt);
         }
     }
 
