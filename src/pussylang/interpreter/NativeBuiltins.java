@@ -177,16 +177,17 @@ public class NativeBuiltins {
         }
     }
 
-    /** len(string|bytes) -> number */
     static class Len implements PussyCallable {
         @Override public int arity()   { return 1; }
         @Override public String name() { return "len"; }
+
         @Override
         public Object call(Interpreter i, List<Object> args) {
             Object val = args.get(0);
             if (val instanceof String s)  return (double) s.length();
             if (val instanceof byte[] b)  return (double) b.length;
-            throw new RuntimeError("len() expects string or bytes.");
+            if (val instanceof List<?> l) return (double) l.size();
+            throw new RuntimeError("len() expects string, bytes, or array.");
         }
     }
 

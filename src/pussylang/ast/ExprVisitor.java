@@ -11,4 +11,7 @@ public interface ExprVisitor<R> {
     R visitAssign(AssignExpr expr);
     R visitCall(CallExpr expr);
     R visitHexLiteral(HexLiteralExpr expr);
+    R visitArrayLiteral(ArrayLiteralExpr expr);
+    R visitIndex(IndexExpr expr);
+    R visitIndexAssign(IndexAssignExpr expr);
 }

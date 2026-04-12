@@ -145,7 +145,8 @@ public class NativeRegistry {
             Object v = a.get(0);
             if (v instanceof String s) return (double) s.length();
             if (v instanceof byte[] b) return (double) b.length;
-            throw new VMError("len() expects string or bytes.");
+            if (v instanceof List<?> l) return (double) l.size();
+            throw new VMError("len() expects string, bytes, or array.");
         }
     }
 

@@ -63,6 +63,44 @@ public class Interpreter implements ExprVisitor<Object>, StmtVisitor<Void> {
     }
 
     @Override
+    public Object visitArrayLiteral(ArrayLiteralExpr expr) {
+        List<Object> array = new ArrayList<>();
+        for (Expr element : expr.elements()) {
+            array.add(evaluate(element));
+        }
+        return array;
+    }
+
+    @Override
+    public Object visitIndex(IndexExpr expr) {
+        Object array = evaluate(expr.array());
+        Object index = evaluate(expr.index());
+        if (array instanceof List<?> list && index instanceof Double d) {
+            int idx = d.intValue();
+            if (idx < 0 || idx >= list.size())
+                throw new RuntimeError("Index out of bounds: " + idx);
+            return list.get(idx);
+        }
+        throw new RuntimeError("Only arrays can be indexed.");
+    }
+
+    @Override
+    public Object visitIndexAssign(IndexAssignExpr expr) {
+        Object array = evaluate(expr.array());
+        Object index = evaluate(expr.index());
+        Object value = evaluate(expr.value());
+        if (array instanceof List<?> list && index instanceof Double d) {
+            int idx = d.intValue();
+            if (idx < 0 || idx >= list.size())
+                throw new RuntimeError("Index out of bounds: " + idx);
+
+            ((List<Object>) list).set(idx, value);
+            return value;
+        }
+        throw new RuntimeError("Invalid array assignment target.");
+    }
+
+    @Override
     public Void visitVar(VarStmt stmt) {
         Object value = null;
         if (stmt.initializer() != null) {

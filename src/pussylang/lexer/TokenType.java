@@ -14,6 +14,8 @@ public enum TokenType {
     LESS, LESS_EQUAL,
     AND_AND, OR_OR,
 
+    LEFT_BRACKET, RIGHT_BRACKET,
+
 
     IDENTIFIER,
     NUMBER,

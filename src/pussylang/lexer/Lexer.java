@@ -70,6 +70,8 @@ public class Lexer {
             case '>' -> addToken(match('=') ? TokenType.GREATER_EQUAL : TokenType.GREATER);
             case '&' -> { if (match('&')) addToken(TokenType.AND_AND); }
             case '|' -> { if (match('|')) addToken(TokenType.OR_OR);   }
+            case '[' -> addToken(TokenType.LEFT_BRACKET);
+            case ']' -> addToken(TokenType.RIGHT_BRACKET);
             case '/' -> {
                 if (match('/')) skipLineComment();
                 else if (match('*')) skipBlockComment();

@@ -9,7 +9,7 @@ import java.util.*;
 public class VM {
 
     private static final int STACK_MAX  = 1024;
-    private static final int FRAMES_MAX = 64;
+    private static final int FRAMES_MAX = 512;
 
 
 
@@ -91,6 +91,48 @@ public class VM {
                         double r = a - b;
                       //  System.out.println("  -> SUB result=" + r);
                         push(r);
+                    }
+                    case NEW_ARRAY -> {
+                        int size = f.readByte() & 0xFF;
+                        List<Object> array = new ArrayList<>(size);
+
+                        for (int i = size - 1; i >= 0; i--) {
+                            array.add(0, stack[top - size + i]);
+                        }
+                        top -= size;
+                        push(array);
+                    }
+
+                    case INDEX_GET -> {
+                        Object index = pop();
+                        Object array = pop();
+                        if (array instanceof List<?> list && index instanceof Double d) {
+                            int idx = d.intValue();
+                            if (idx < 0 || idx >= list.size()) throw new VMError("Index out of bounds: " + idx);
+                            push(list.get(idx));
+                        } else {
+                            throw new VMError("Only arrays can be indexed.");
+                        }
+                    }
+
+                    case INDEX_SET -> {
+                        Object value = pop();
+                        Object index = pop();
+                        Object array = pop();
+                        if (array instanceof List<?> list && index instanceof Double d) {
+                            int idx = d.intValue();
+
+                            if (idx < 0) throw new VMError("Negative index: " + idx);
+                            if (idx > list.size()) throw new VMError("Index out of bounds: " + idx);
+                            if (idx == list.size()) {
+                                ((List<Object>) list).add(value);
+                            } else {
+                                ((List<Object>) list).set(idx, value);
+                            }
+                            push(value);
+                        } else {
+                            throw new VMError("Invalid array assignment.");
+                        }
                     }
 
                     case MUL -> {

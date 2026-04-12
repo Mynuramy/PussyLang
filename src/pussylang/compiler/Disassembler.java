@@ -59,6 +59,7 @@ public class Disassembler {
                 return disassembleSlotOp(code, offset, op);
 
 
+
             case GET_UPVALUE: case SET_UPVALUE:
                 return disassembleUpvalueOp(code, offset, op);
 
@@ -69,6 +70,15 @@ public class Disassembler {
 
             case LOOP:
                 return disassembleLoop(code, offset, op);
+
+            case NEW_ARRAY:
+                return disassembleNewArray(code, offset, op);
+
+            case INDEX_GET:
+            case INDEX_SET:
+                System.out.println(op);
+                return offset + 1;
+
 
             default:
                 System.out.println(op + " (unhandled)");
@@ -90,6 +100,12 @@ public class Disassembler {
         Object value = chunk.constants.get(constIndex);
         String display = formatConstant(value);
         System.out.printf("%-20s  [%d] %s%n", op, constIndex, display);
+        return offset + 2;
+    }
+
+    private static int disassembleNewArray(byte[] code, int offset, OpCode op) {
+        int elementCount = code[offset + 1] & 0xFF;
+        System.out.printf("%-20s  %d elements%n", op, elementCount);
         return offset + 2;
     }
 

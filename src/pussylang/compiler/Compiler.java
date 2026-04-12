@@ -210,6 +210,33 @@ public class Compiler implements ExprVisitor<Void>, StmtVisitor<Void> {
     }
 
     @Override
+    public Void visitArrayLiteral(ArrayLiteralExpr expr) {
+
+        for (Expr elem : expr.elements()) {
+            compileExpr(elem);
+        }
+        emitWithByte(NEW_ARRAY, expr.elements().size());
+        return null;
+    }
+
+    @Override
+    public Void visitIndex(IndexExpr expr) {
+        compileExpr(expr.array());
+        compileExpr(expr.index());
+        emit(INDEX_GET);
+        return null;
+    }
+
+    @Override
+    public Void visitIndexAssign(IndexAssignExpr expr) {
+        compileExpr(expr.array());
+        compileExpr(expr.index());
+        compileExpr(expr.value());
+        emit(INDEX_SET);
+        return null;
+    }
+
+    @Override
     public Void visitGrouping(GroupingExpr e) {
         compileExpr(e.expression());
         return null;

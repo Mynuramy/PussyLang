@@ -22,6 +22,11 @@ public enum OpCode {
     GREATER, GREATER_EQ,
 
 
+    NEW_ARRAY,
+    INDEX_GET,
+    INDEX_SET,
+
+
     DEFINE_GLOBAL,
     GET_GLOBAL,
     SET_GLOBAL,

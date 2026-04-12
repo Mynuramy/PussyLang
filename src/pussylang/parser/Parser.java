@@ -153,13 +153,14 @@ public class Parser {
     /** x = expr  right associative */
     private Expr assignment() {
         Expr expr = or();
-
         if (match(EQUAL)) {
             Token equals = previous();
-            Expr value = assignment(); // rightrecursive for right associativity
-
+            Expr value = assignment();
             if (expr instanceof VariableExpr v) {
                 return new AssignExpr(v.name(), value);
+            } else if (expr instanceof IndexExpr idx) {
+
+                return new IndexAssignExpr(idx.array(), idx.bracket(), idx.index(), value);
             }
             throw error(equals, "Invalid assignment target.");
         }
@@ -226,6 +227,17 @@ public class Parser {
         return expr;
     }
 
+    private Expr arrayLiteral() {
+        List<Expr> elements = new ArrayList<>();
+        if (!check(RIGHT_BRACKET)) {
+            do {
+                elements.add(expression());
+            } while (match(COMMA));
+        }
+        consume(RIGHT_BRACKET, "Expected ']' after array elements.");
+        return new ArrayLiteralExpr(elements);
+    }
+
     /** !expr  |  -expr */
     private Expr unary() {
         if (match(BANG, MINUS)) {
@@ -241,11 +253,25 @@ public class Parser {
         while (true) {
             if (match(LEFT_PAREN)) {
                 expr = finishCall(expr);
+            } else if (match(LEFT_BRACKET)) {
+                expr = finishIndex(expr);
             } else {
                 break;
             }
         }
         return expr;
+    }
+
+    private Expr finishIndex(Expr array) {
+        Token bracket = previous();
+        Expr index = expression();
+        consume(RIGHT_BRACKET, "Expected ']' after index.");
+
+        if (match(EQUAL)) {
+            Expr value = expression();
+            return new IndexAssignExpr(array, bracket, index, value);
+        }
+        return new IndexExpr(array, bracket, index);
     }
 
     private Expr finishCall(Expr callee) {
@@ -272,6 +298,9 @@ public class Parser {
         if (match(STRING))     return new LiteralExpr(previous().literal());
         if (match(BYTE_STRING)) return new LiteralExpr(previous().literal());
         if (match(HEX_NUMBER)) return new HexLiteralExpr((long) previous().literal());
+        if (match(LEFT_BRACKET)) {
+            return arrayLiteral();
+        }
 
         if (match(IDENTIFIER)) return new VariableExpr(previous());
 
