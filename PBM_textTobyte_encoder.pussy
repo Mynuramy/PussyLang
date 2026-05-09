@@ -1,0 +1,165 @@
+var power_of_two_bit_masks = [128, 64, 32, 16, 8, 4, 2, 1];
+
+func extract_bit_from_byte(byte_value, bit_position) {
+    var current_bit_mask = power_of_two_bit_masks[bit_position];
+    return cast(byte_value / current_bit_mask, "int") % 2;
+}
+
+func convert_byte_to_binary_string(byte_value) {
+    var binary_string_result = "";
+    var bit_index = 0;
+
+    while (bit_index < 8) {
+        binary_string_result = binary_string_result + str(extract_bit_from_byte(byte_value, bit_index));
+        bit_index = bit_index + 1;
+    }
+
+    return binary_string_result;
+}
+
+func create_ascii_preview(byte_value) {
+    var preview_line = "";
+    var bit_index = 0;
+
+    while (bit_index < 8) {
+        var current_bit = extract_bit_from_byte(byte_value, bit_index);
+
+        if (current_bit == 1) {
+            preview_line = preview_line + "##";
+        } else {
+            preview_line = preview_line + "..";
+        }
+
+        bit_index = bit_index + 1;
+    }
+
+    return preview_line;
+}
+
+func generate_pbm_image_from_text(input_string, pixel_scale_factor, output_file_path) {
+
+    var input_byte_array = cast(input_string, "bytes");
+    var total_character_count = len(input_byte_array);
+
+    var image_width_in_pixels = 8 * pixel_scale_factor;
+    var image_height_in_pixels = total_character_count * pixel_scale_factor;
+
+    print "";
+    print "Input:      " + input_string;
+    print "Characters: " + str(total_character_count);
+    print "Scale:      " + str(pixel_scale_factor) + "x";
+    print "Image:      " + str(image_width_in_pixels) + " x " + str(image_height_in_pixels) + " pixels";
+    print "Output:     " + output_file_path;
+    print "";
+
+    var character_index = 0;
+
+    while (character_index < total_character_count) {
+
+        var current_byte_value = (input_byte_array[character_index] + 256) % 256;
+
+        var binary_representation = convert_byte_to_binary_string(current_byte_value);
+        var ascii_preview = create_ascii_preview(current_byte_value);
+
+        var display_character = chr(current_byte_value);
+        if (current_byte_value < 32) {
+            display_character = "?";
+        }
+
+        print "  '" + display_character + "'  " +
+              str(current_byte_value) + "  [" +
+              binary_representation + "]  " +
+              ascii_preview;
+
+        character_index = character_index + 1;
+    }
+
+    print "";
+
+    var pbm_file_content = "P1\n";
+    pbm_file_content = pbm_file_content + "# Bitmap Generator\n";
+    pbm_file_content = pbm_file_content + "# Input: " + input_string + "\n";
+    pbm_file_content = pbm_file_content + str(image_width_in_pixels) + " " + str(image_height_in_pixels) + "\n";
+
+    var current_character_index = 0;
+
+    while (current_character_index < total_character_count) {
+
+        var current_byte_value = (input_byte_array[current_character_index] + 256) % 256;
+
+        var row_repeat_index = 0;
+
+        while (row_repeat_index < pixel_scale_factor) {
+
+            var image_row = "";
+            var bit_index = 0;
+
+            while (bit_index < 8) {
+
+                var current_bit_value = extract_bit_from_byte(current_byte_value, bit_index);
+
+                var pixel_repeat_index = 0;
+
+                while (pixel_repeat_index < pixel_scale_factor) {
+                    image_row = image_row + str(current_bit_value) + " ";
+                    pixel_repeat_index = pixel_repeat_index + 1;
+                }
+
+                bit_index = bit_index + 1;
+            }
+
+            pbm_file_content = pbm_file_content + image_row + "\n";
+            row_repeat_index = row_repeat_index + 1;
+        }
+
+        current_character_index = current_character_index + 1;
+    }
+
+    file_write(output_file_path, cast(pbm_file_content, "bytes"));
+
+    print "Saved to: " + output_file_path;
+    return null;
+}
+
+func parse_pixel_scale(scale_string) {
+
+    var scale_bytes = cast(scale_string, "bytes");
+    var parsed_value = 0;
+    var digit_index = 0;
+
+    while (digit_index < len(scale_bytes)) {
+
+        var current_digit = (scale_bytes[digit_index] + 256) % 256;
+
+        if (current_digit >= 48) {
+            if (current_digit <= 57) {
+                parsed_value = parsed_value * 10 + (current_digit - 48);
+            }
+        }
+
+        digit_index = digit_index + 1;
+    }
+
+    if (parsed_value < 1) { parsed_value = 1; }
+    if (parsed_value > 8) { parsed_value = 8; }
+
+    return parsed_value;
+}
+
+
+var user_input_text = input("Enter a string: ");
+var pixel_scale_input = input("Pixel scale (1-8, default 4): ");
+var output_file_name = input("Output filename (default: output.pbm): ");
+
+var pixel_scale_value = parse_pixel_scale(pixel_scale_input);
+
+if (len(output_file_name) == 0) {
+    output_file_name = "output.pbm";
+}
+
+if (len(user_input_text) == 0) {
+    print "No input given bro";
+    user_input_text = "PussyLang";
+}
+
+generate_pbm_image_from_text(user_input_text, pixel_scale_value, output_file_name);
