@@ -1,0 +1,506 @@
+func read_u8(file_bytes, offset) {
+    return (file_bytes[offset] + 256) % 256;
+}
+
+func read_u16(file_bytes, offset) {
+    var b0 = (file_bytes[offset]     + 256) % 256;
+    var b1 = (file_bytes[offset + 1] + 256) % 256;
+    return b0 + b1 * 256;
+}
+
+func read_u32(file_bytes, offset) {
+    var b0 = (file_bytes[offset]     + 256) % 256;
+    var b1 = (file_bytes[offset + 1] + 256) % 256;
+    var b2 = (file_bytes[offset + 2] + 256) % 256;
+    var b3 = (file_bytes[offset + 3] + 256) % 256;
+    return b0 + b1 * 256 + b2 * 65536 + b3 * 16777216;
+}
+
+func read_string(file_bytes, offset, file_size) {
+    var result  = "";
+    var current = offset;
+    var safety  = 0;
+    while (safety < 256) {
+        if (current >= file_size) { safety = 999; }
+        if (safety < 256) {
+            var byte_val = read_u8(file_bytes, current);
+            if (byte_val == 0) {
+                safety = 999;
+            } else {
+                result  = result + chr(byte_val);
+                current = current + 1;
+                safety  = safety + 1;
+            }
+        }
+    }
+    return result;
+}
+
+
+func parse_dos_header(file_bytes) {
+    print "--- DOS Header ---";
+    var magic_0 = read_u8(file_bytes, 0);
+    var magic_1 = read_u8(file_bytes, 1);
+    if (magic_0 == 77) {
+        if (magic_1 == 90) {
+            print "Magic: MZ (valid)";
+        } else {
+            print "ERROR: not a valid PE file";
+            return 0;
+        }
+    } else {
+        print "ERROR: not a valid PE file";
+        return 0;
+    }
+    var bytes_last_page = read_u16(file_bytes, 2);
+    var pages_in_file   = read_u16(file_bytes, 4);
+    var min_paragraphs  = read_u16(file_bytes, 10);
+    var max_paragraphs  = read_u16(file_bytes, 12);
+    var initial_sp      = read_u16(file_bytes, 16);
+    var initial_ip      = read_u16(file_bytes, 20);
+    var pe_offset       = read_u32(file_bytes, 60);
+    print "Bytes on last page: " + str(bytes_last_page);
+    print "Pages in file:      " + str(pages_in_file);
+    print "Min paragraphs:     " + str(min_paragraphs);
+    print "Max paragraphs:     " + str(max_paragraphs);
+    print "Initial SP:         " + str(initial_sp);
+    print "Initial IP:         " + str(initial_ip);
+    print "PE header offset:   " + hex(pe_offset);
+    print "";
+    return pe_offset;
+}
+
+
+func parse_rich_header(file_bytes, pe_offset) {
+    print "--- Rich Header ---";
+    var search_pos  = 128;
+    var found_rich  = 0;
+    var rich_offset = 0;
+    while (search_pos < pe_offset) {
+        var b0 = read_u8(file_bytes, search_pos);
+        var b1 = read_u8(file_bytes, search_pos + 1);
+        var b2 = read_u8(file_bytes, search_pos + 2);
+        var b3 = read_u8(file_bytes, search_pos + 3);
+        if (b0 == 82) {
+            if (b1 == 105) {
+                if (b2 == 99) {
+                    if (b3 == 104) {
+                        found_rich  = 1;
+                        rich_offset = search_pos;
+                        search_pos  = pe_offset + 1;
+                    }
+                }
+            }
+        }
+        if (found_rich == 0) {
+            search_pos = search_pos + 1;
+        }
+    }
+    if (found_rich == 1) {
+        print "Rich header at " + hex(rich_offset) + " (MSVC/Visual Studio toolchain)";
+        var xor_key = read_u32(file_bytes, rich_offset + 4);
+        print "XOR key: " + hex(xor_key);
+    } else {
+        print "No Rich header (likely GCC/Clang/MinGW)";
+    }
+    print "";
+}
+
+
+func parse_pe_signature(file_bytes, pe_offset) {
+    print "--- PE Signature ---";
+    var s0 = read_u8(file_bytes, pe_offset);
+    var s1 = read_u8(file_bytes, pe_offset + 1);
+    var s2 = read_u8(file_bytes, pe_offset + 2);
+    var s3 = read_u8(file_bytes, pe_offset + 3);
+    if (s0 == 80) {
+        if (s1 == 69) {
+            if (s2 == 0) {
+                if (s3 == 0) {
+                    print "Signature: PE\\0\\0 (valid)";
+                }
+            }
+        }
+    }
+    print "";
+}
+
+
+func parse_coff_header(file_bytes, pe_offset) {
+    print "--- COFF File Header ---";
+    var coff_offset       = pe_offset + 4;
+    var machine           = read_u16(file_bytes, coff_offset);
+    var num_sections      = read_u16(file_bytes, coff_offset + 2);
+    var timestamp         = read_u32(file_bytes, coff_offset + 4);
+    var optional_hdr_size = read_u16(file_bytes, coff_offset + 16);
+    var characteristics   = read_u16(file_bytes, coff_offset + 18);
+
+    var machine_name = "Unknown";
+    if (machine == 332)   { machine_name = "x86 (i386)";  }
+    if (machine == 34404) { machine_name = "x64 (AMD64)"; }
+    if (machine == 452)   { machine_name = "ARM";          }
+    if (machine == 43620) { machine_name = "ARM64";        }
+    if (machine == 512)   { machine_name = "IA64";         }
+
+    print "Machine:            " + machine_name + " (" + hex(machine) + ")";
+    print "Sections:           " + str(num_sections);
+    print "Timestamp:          " + str(timestamp);
+    print "Optional hdr size:  " + str(optional_hdr_size);
+    print "Characteristics:    " + hex(characteristics);
+
+    var exe_flag = cast(characteristics / 2, "int") % 2;
+    var dll_flag = cast(characteristics / 8192, "int") % 2;
+    var stripped = characteristics % 2;
+    if (stripped == 1) { print "  Relocs stripped"; }
+    if (exe_flag == 1) { print "  Executable image"; }
+    if (dll_flag == 1) { print "  DLL"; }
+
+    print "";
+    return coff_offset;
+}
+
+
+func parse_optional_header(file_bytes, coff_offset) {
+    print "--- Optional Header ---";
+    var opt_offset  = coff_offset + 20;
+    var magic       = read_u16(file_bytes, opt_offset);
+    var is_pe32     = 0;
+    var is_pe32plus = 0;
+
+    if (magic == 267) { print "Format: PE32  (32-bit)"; is_pe32     = 1; }
+    if (magic == 523) { print "Format: PE32+ (64-bit)"; is_pe32plus = 1; }
+
+    var major_linker = read_u8(file_bytes, opt_offset + 2);
+    var minor_linker = read_u8(file_bytes, opt_offset + 3);
+    var code_size    = read_u32(file_bytes, opt_offset + 4);
+    var init_data    = read_u32(file_bytes, opt_offset + 8);
+    var uninit_data  = read_u32(file_bytes, opt_offset + 12);
+    var entry_point  = read_u32(file_bytes, opt_offset + 16);
+    var base_of_code = read_u32(file_bytes, opt_offset + 20);
+
+    print "Linker version:     " + str(major_linker) + "." + str(minor_linker);
+    print "Code size:          " + str(code_size) + " bytes";
+    print "Init data size:     " + str(init_data) + " bytes";
+    print "Uninit data size:   " + str(uninit_data) + " bytes";
+    print "Entry point RVA:    " + hex(entry_point);
+    print "Base of code:       " + hex(base_of_code);
+
+    var subsystem_offset = 0;
+    if (is_pe32 == 1) {
+        var image_base = read_u32(file_bytes, opt_offset + 28);
+        print "Image base:         " + hex(image_base);
+        subsystem_offset = opt_offset + 68;
+    }
+    if (is_pe32plus == 1) {
+        var image_base_lo = read_u32(file_bytes, opt_offset + 24);
+        print "Image base (lo):    " + hex(image_base_lo);
+        subsystem_offset = opt_offset + 68;
+    }
+
+    if (subsystem_offset > 0) {
+        var subsystem      = read_u16(file_bytes, subsystem_offset);
+        var subsystem_name = "Unknown";
+        if (subsystem == 1)  { subsystem_name = "Native";          }
+        if (subsystem == 2)  { subsystem_name = "Windows GUI";     }
+        if (subsystem == 3)  { subsystem_name = "Windows Console"; }
+        if (subsystem == 10) { subsystem_name = "EFI Application"; }
+        if (subsystem == 14) { subsystem_name = "Xbox";            }
+        print "Subsystem:          " + subsystem_name + " (" + str(subsystem) + ")";
+    }
+
+    var dll_chars_offset = 0;
+    if (is_pe32 == 1)     { dll_chars_offset = opt_offset + 70; }
+    if (is_pe32plus == 1) { dll_chars_offset = opt_offset + 70; }
+
+    if (dll_chars_offset > 0) {
+        var dll_chars = read_u16(file_bytes, dll_chars_offset);
+        print "DLL characteristics: " + hex(dll_chars);
+        var aslr = cast(dll_chars / 64,  "int") % 2;
+        var nx   = cast(dll_chars / 256, "int") % 2;
+        var seh  = cast(dll_chars / 1024,"int") % 2;
+        if (aslr == 1) { print "  ASLR enabled (Dynamic base)"; }
+        if (nx   == 1) { print "  NX compatible (DEP)";         }
+        if (seh  == 0) { print "  No SafeSEH";                  }
+    }
+
+    print "";
+    return opt_offset;
+}
+
+
+func parse_sections(file_bytes, coff_offset, num_sections, optional_hdr_size) {
+    print "--- Section Table ---";
+    var section_table_offset = coff_offset + 20 + optional_hdr_size;
+    var section_index = 0;
+    while (section_index < num_sections) {
+        var base = section_table_offset + section_index * 40;
+        var n0 = chr(read_u8(file_bytes, base));
+        var n1 = chr(read_u8(file_bytes, base + 1));
+        var n2 = chr(read_u8(file_bytes, base + 2));
+        var n3 = chr(read_u8(file_bytes, base + 3));
+        var n4 = chr(read_u8(file_bytes, base + 4));
+        var n5 = chr(read_u8(file_bytes, base + 5));
+        var n6 = chr(read_u8(file_bytes, base + 6));
+        var n7 = chr(read_u8(file_bytes, base + 7));
+        var section_name    = n0 + n1 + n2 + n3 + n4 + n5 + n6 + n7;
+        var virtual_size    = read_u32(file_bytes, base + 8);
+        var virtual_address = read_u32(file_bytes, base + 12);
+        var raw_size        = read_u32(file_bytes, base + 16);
+        var raw_offset      = read_u32(file_bytes, base + 20);
+        var characteristics = read_u32(file_bytes, base + 36);
+
+        print "Section " + str(section_index + 1) + ": " + section_name;
+        print "  Virtual size:     " + str(virtual_size) + " bytes";
+        print "  Virtual address:  " + hex(virtual_address);
+        print "  Raw size:         " + str(raw_size) + " bytes";
+        print "  Raw offset:       " + hex(raw_offset);
+        print "  Characteristics:  " + hex(characteristics);
+
+        var flag_code  = cast(characteristics / 32,         "int") % 2;
+        var flag_idata = cast(characteristics / 64,         "int") % 2;
+        var flag_udata = cast(characteristics / 128,        "int") % 2;
+        var flag_exec  = cast(characteristics / 536870912,  "int") % 2;
+        var flag_read  = cast(characteristics / 1073741824, "int") % 2;
+        var flag_write = cast(characteristics / 2147483648, "int") % 2;
+
+        var flags_str = "  Flags:";
+        if (flag_code  == 1) { flags_str = flags_str + " CODE";        }
+        if (flag_idata == 1) { flags_str = flags_str + " INIT_DATA";   }
+        if (flag_udata == 1) { flags_str = flags_str + " UNINIT_DATA"; }
+        if (flag_exec  == 1) { flags_str = flags_str + " EXEC";        }
+        if (flag_read  == 1) { flags_str = flags_str + " READ";        }
+        if (flag_write == 1) { flags_str = flags_str + " WRITE";       }
+        print flags_str;
+
+        if (flag_exec == 1) {
+            if (flag_write == 1) {
+                print "  WARNING: WRITE+EXEC section (suspicious)";
+            }
+        }
+
+        section_index = section_index + 1;
+    }
+    print "";
+}
+
+
+func rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, rva) {
+    var section_table_offset = coff_offset + 20 + optional_hdr_size;
+    var section_index = 0;
+    while (section_index < num_sections) {
+        var base            = section_table_offset + section_index * 40;
+        var virtual_address = read_u32(file_bytes, base + 12);
+        var virtual_size    = read_u32(file_bytes, base + 8);
+        var raw_offset      = read_u32(file_bytes, base + 20);
+        if (rva >= virtual_address) {
+            if (rva < virtual_address + virtual_size) {
+                return raw_offset + (rva - virtual_address);
+            }
+        }
+        section_index = section_index + 1;
+    }
+    return 0;
+}
+
+
+func parse_imports(file_bytes, file_size, coff_offset, num_sections, optional_hdr_size, opt_offset, is_pe32) {
+    print "--- Import Table ---";
+    var data_dir_offset = 0;
+    if (is_pe32 == 1) { data_dir_offset = opt_offset + 96;  }
+    if (is_pe32 == 0) { data_dir_offset = opt_offset + 112; }
+
+    var import_rva  = read_u32(file_bytes, data_dir_offset);
+    var import_size = read_u32(file_bytes, data_dir_offset + 4);
+
+    if (import_rva == 0) {
+        print "No import table.";
+        print "";
+        return null;
+    }
+
+    print "Import table RVA: " + hex(import_rva) + " (" + str(import_size) + " bytes)";
+    var import_offset = rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, import_rva);
+    if (import_offset == 0) {
+        print "Could not resolve import table offset.";
+        print "";
+        return null;
+    }
+
+    var dll_index = 0;
+    var running   = 1;
+    while (running == 1) {
+        var desc_base         = import_offset + dll_index * 20;
+        var original_thunk    = read_u32(file_bytes, desc_base);
+        var name_rva          = read_u32(file_bytes, desc_base + 12);
+        var first_thunk       = read_u32(file_bytes, desc_base + 16);
+
+        if (name_rva == 0) {
+            running = 0;
+        }
+        if (running == 1) {
+            var name_offset = rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, name_rva);
+            var dll_name    = read_string(file_bytes, name_offset, file_size);
+            print "  " + dll_name;
+
+            var thunk_rva    = original_thunk;
+            if (thunk_rva == 0) { thunk_rva = first_thunk; }
+            var thunk_offset = rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, thunk_rva);
+
+            var func_index = 0;
+            var func_running = 1;
+            while (func_running == 1) {
+                var entry_offset = thunk_offset + func_index * 4;
+                if (is_pe32 == 0) { entry_offset = thunk_offset + func_index * 8; }
+
+                var thunk_val = read_u32(file_bytes, entry_offset);
+                if (thunk_val == 0) {
+                    func_running = 0;
+                }
+                if (func_running == 1) {
+                    var ordinal_flag = cast(thunk_val / 2147483648, "int") % 2;
+                    if (ordinal_flag == 1) {
+                        var ordinal = thunk_val % 65536;
+                        print "    [ordinal " + str(ordinal) + "]";
+                    } else {
+                        var hint_rva    = thunk_val;
+                        var hint_offset = rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, hint_rva);
+                        if (hint_offset > 2) {
+                            var func_name = read_string(file_bytes, hint_offset + 2, file_size);
+                            print "    " + func_name;
+                        }
+                    }
+                    func_index = func_index + 1;
+                }
+            }
+            dll_index = dll_index + 1;
+        }
+    }
+    print "";
+}
+
+
+func parse_exports(file_bytes, file_size, coff_offset, num_sections, optional_hdr_size, opt_offset, is_pe32) {
+    print "--- Export Table ---";
+    var data_dir_offset = 0;
+    if (is_pe32 == 1) { data_dir_offset = opt_offset + 96  - 8; }
+    if (is_pe32 == 0) { data_dir_offset = opt_offset + 112 - 8; }
+
+    var export_rva  = read_u32(file_bytes, data_dir_offset);
+    var export_size = read_u32(file_bytes, data_dir_offset + 4);
+
+    if (export_rva == 0) {
+        print "No export table.";
+        print "";
+        return null;
+    }
+
+    var export_offset = rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, export_rva);
+    var name_rva_exp        = read_u32(file_bytes, export_offset + 12);
+    var ordinal_base        = read_u32(file_bytes, export_offset + 16);
+    var num_functions       = read_u32(file_bytes, export_offset + 20);
+    var num_names           = read_u32(file_bytes, export_offset + 24);
+    var names_rva           = read_u32(file_bytes, export_offset + 32);
+
+    var dll_name_offset = rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, name_rva_exp);
+    var dll_name_exp    = read_string(file_bytes, dll_name_offset, file_size);
+
+    print "DLL name:           " + dll_name_exp;
+    print "Ordinal base:       " + str(ordinal_base);
+    print "Total functions:    " + str(num_functions);
+    print "Named exports:      " + str(num_names);
+
+    var names_table_offset = rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, names_rva);
+    var exp_index = 0;
+    while (exp_index < num_names) {
+        var func_name_rva    = read_u32(file_bytes, names_table_offset + exp_index * 4);
+        var func_name_offset = rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, func_name_rva);
+        var func_name        = read_string(file_bytes, func_name_offset, file_size);
+        print "  " + func_name;
+        exp_index = exp_index + 1;
+    }
+    print "";
+}
+
+
+func preview_entrypoint(file_bytes, file_size, coff_offset, num_sections, optional_hdr_size, opt_offset) {
+    print "--- Entry Point Preview (first 32 bytes) ---";
+    var entry_rva    = read_u32(file_bytes, opt_offset + 16);
+    var entry_offset = rva_to_offset(file_bytes, coff_offset, num_sections, optional_hdr_size, entry_rva);
+
+    if (entry_offset == 0) {
+        print "Could not resolve entry point offset.";
+        print "";
+        return null;
+    }
+
+    print "Entry RVA:    " + hex(entry_rva);
+    print "File offset:  " + hex(entry_offset);
+
+    var hex_line   = "";
+    var ascii_line = "";
+    var byte_index = 0;
+    while (byte_index < 32) {
+        var current_offset = entry_offset + byte_index;
+        if (current_offset < file_size) {
+            var bval   = read_u8(file_bytes, current_offset);
+            var hi     = cast(bval / 16, "int");
+            var lo     = bval % 16;
+            var hi_chr = chr(hi + 48);
+            var lo_chr = chr(lo + 48);
+            if (hi > 9) { hi_chr = chr(hi + 55); }
+            if (lo > 9) { lo_chr = chr(lo + 55); }
+            hex_line = hex_line + hi_chr + lo_chr + " ";
+            if (bval >= 32) {
+                if (bval <= 126) {
+                    ascii_line = ascii_line + chr(bval);
+                } else {
+                    ascii_line = ascii_line + ".";
+                }
+            } else {
+                ascii_line = ascii_line + ".";
+            }
+        }
+        byte_index = byte_index + 1;
+    }
+    print "HEX:   " + hex_line;
+    print "ASCII: " + ascii_line;
+    print "";
+}
+
+
+var target_file = "YOUR FILE HERE";
+
+print "PE Parser";
+print "Target: " + target_file;
+
+var file_bytes = file_read(target_file);
+if (file_bytes == null) {
+    print "ERROR: could not read " + target_file;
+} else {
+    var file_size = len(file_bytes);
+    print "File size: " + str(file_size) + " bytes";
+
+    var pe_offset = parse_dos_header(file_bytes);
+    if (pe_offset == 0) {
+        print "Aborting - not a PE file.";
+    } else {
+        parse_rich_header(file_bytes, pe_offset);
+        parse_pe_signature(file_bytes, pe_offset);
+
+        var coff_offset      = parse_coff_header(file_bytes, pe_offset);
+        var num_sections     = read_u16(file_bytes, coff_offset + 2);
+        var optional_hdr_sz  = read_u16(file_bytes, coff_offset + 16);
+        var opt_offset       = parse_optional_header(file_bytes, coff_offset);
+
+        var magic    = read_u16(file_bytes, opt_offset);
+        var is_pe32  = 0;
+        if (magic == 267) { is_pe32 = 1; }
+
+        parse_sections(file_bytes, coff_offset, num_sections, optional_hdr_sz);
+        parse_imports(file_bytes, file_size, coff_offset, num_sections, optional_hdr_sz, opt_offset, is_pe32);
+        parse_exports(file_bytes, file_size, coff_offset, num_sections, optional_hdr_sz, opt_offset, is_pe32);
+        preview_entrypoint(file_bytes, file_size, coff_offset, num_sections, optional_hdr_sz, opt_offset);
+
+        print "Analysis complete.";
+    }
+}
