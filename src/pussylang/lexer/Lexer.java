@@ -21,7 +21,7 @@ public class Lexer {
         KEYWORDS.put("true",   TokenType.TRUE);
         KEYWORDS.put("false",  TokenType.FALSE);
         KEYWORDS.put("null",   TokenType.NULL);
-        // shit for maldev maybe
+        // shit for maldev maybe THAT IS BCICALY NEVER USED SO FUKKK IT?
         KEYWORDS.put("alloc",  TokenType.ALLOC);
         KEYWORDS.put("free",   TokenType.FREE);
         KEYWORDS.put("write",  TokenType.WRITE);

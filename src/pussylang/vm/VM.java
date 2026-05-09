@@ -110,8 +110,12 @@ public class VM {
                             int idx = d.intValue();
                             if (idx < 0 || idx >= list.size()) throw new VMError("Index out of bounds: " + idx);
                             push(list.get(idx));
+                        } else if (array instanceof byte[] bytes && index instanceof Double d) {
+                            int idx = d.intValue();
+                            if (idx < 0 || idx >= bytes.length) throw new VMError("Index out of bounds: " + idx);
+                            push((double) bytes[idx]);
                         } else {
-                            throw new VMError("Only arrays can be indexed.");
+                            throw new VMError("Only arrays or byte strings can be indexed.");
                         }
                     }
 
@@ -121,7 +125,6 @@ public class VM {
                         Object array = pop();
                         if (array instanceof List<?> list && index instanceof Double d) {
                             int idx = d.intValue();
-
                             if (idx < 0) throw new VMError("Negative index: " + idx);
                             if (idx > list.size()) throw new VMError("Index out of bounds: " + idx);
                             if (idx == list.size()) {

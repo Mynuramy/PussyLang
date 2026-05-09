@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
+ * THIS SHIT IS NOT BEING USED ANYMORE BUT IS LIKE LEGACY IG?
  * treewalk interpreter and it implements both visitor interfaces so every
  * AST node type has exactly one  method to execute it
  */
