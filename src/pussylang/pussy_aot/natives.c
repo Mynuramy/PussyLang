@@ -768,6 +768,323 @@ static Value n_tcp_close(Value* a, int argc) {
     return make_null();
 }
 
+static Value n_system(Value* a, int argc) {
+    (void)argc;
+    const char* cmd = arg_str(a, 0);
+    int ret = system(cmd);
+    return make_num((double)ret);
+}
+
+
+
+#ifdef _WIN32
+
+static HWND     gfx_hwnd     = NULL;
+static HDC      gfx_mem_dc   = NULL;
+static HBITMAP  gfx_bitmap   = NULL;
+static HBITMAP  gfx_old_bmp  = NULL;
+static int      gfx_win_w    = 0;
+static int      gfx_win_h    = 0;
+static int      gfx_canvas_h = 0;
+static COLORREF gfx_color    = RGB(0, 0, 0);
+static int      gfx_pen_size = 4;
+static int      gfx_mouse_x  = 0;
+static int      gfx_mouse_y  = 0;
+static int      gfx_btn_down = 0;
+static int      gfx_prev_x   = -1;
+static int      gfx_prev_y   = -1;
+static int      gfx_last_evt = 0;
+static int      gfx_alive    = 0;
+static int gfx_stroke_enabled = 1;
+
+static void gfx_stroke(int x, int y) {
+    if (!gfx_mem_dc) return;
+    if (y >= gfx_canvas_h) return;
+    HPEN   pen       = CreatePen(PS_SOLID, gfx_pen_size, gfx_color);
+    HPEN   old_pen   = (HPEN)SelectObject(gfx_mem_dc, pen);
+    HBRUSH brush     = CreateSolidBrush(gfx_color);
+    HBRUSH old_brush = (HBRUSH)SelectObject(gfx_mem_dc, brush);
+    if (gfx_prev_x >= 0 && gfx_btn_down) {
+        MoveToEx(gfx_mem_dc, gfx_prev_x, gfx_prev_y, NULL);
+        LineTo(gfx_mem_dc, x, y);
+    }
+    int r = gfx_pen_size / 2 + 1;
+    Ellipse(gfx_mem_dc, x - r, y - r, x + r, y + r);
+    SelectObject(gfx_mem_dc, old_pen);
+    SelectObject(gfx_mem_dc, old_brush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+    InvalidateRect(gfx_hwnd, NULL, FALSE);
+    UpdateWindow(gfx_hwnd);
+}
+
+static LRESULT CALLBACK GfxWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            if (gfx_mem_dc)
+                BitBlt(hdc, 0, 0, gfx_win_w, gfx_win_h, gfx_mem_dc, 0, 0, SRCCOPY);
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_DESTROY:
+            gfx_alive = 0;
+            PostQuitMessage(0);
+            return 0;
+    }
+    return DefWindowProcA(hwnd, msg, wp, lp);
+}
+
+static Value n_gfx_create(Value* a, int argc) {
+    int w         = (int)arg_num(a, 0);
+    int h         = (int)arg_num(a, 1);
+    int toolbar_h = (int)arg_num(a, 2);
+    const char* t = arg_str(a, 3);
+
+    gfx_win_w    = w;
+    gfx_win_h    = h;
+    gfx_canvas_h = h - toolbar_h;
+    gfx_alive    = 1;
+
+    WNDCLASSEXA wc   = {0};
+    wc.cbSize        = sizeof(wc);
+    wc.style         = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc   = GfxWndProc;
+    wc.hInstance     = GetModuleHandleA(NULL);
+    wc.hCursor       = LoadCursorA(NULL, IDC_CROSS);
+    wc.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+    wc.lpszClassName = "PLGfx";
+    static int gfx_class_registered = 0;
+
+    if (!gfx_class_registered) {
+
+        RegisterClassExA(&wc);
+
+        gfx_class_registered = 1;
+    }
+
+    RECT rc = {0, 0, w, h};
+    AdjustWindowRect(&rc, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, FALSE);
+
+    gfx_hwnd = CreateWindowExA(0, "PLGfx", t,
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        rc.right - rc.left, rc.bottom - rc.top,
+        NULL, NULL, GetModuleHandleA(NULL), NULL);
+
+    if (!gfx_hwnd) return make_bool(0);
+
+    HDC hdc    = GetDC(gfx_hwnd);
+    gfx_mem_dc = CreateCompatibleDC(hdc);
+    gfx_bitmap = CreateCompatibleBitmap(hdc, w, h);
+    gfx_old_bmp = (HBITMAP)SelectObject(gfx_mem_dc, gfx_bitmap);
+    ReleaseDC(gfx_hwnd, hdc);
+
+    RECT fill = {0, 0, w, h};
+    FillRect(gfx_mem_dc, &fill, (HBRUSH)GetStockObject(WHITE_BRUSH));
+
+    ShowWindow(gfx_hwnd, SW_SHOW);
+    UpdateWindow(gfx_hwnd);
+    return make_bool(1);
+}
+
+static Value n_gfx_poll(Value* a, int argc) {
+    if (!gfx_hwnd || !gfx_alive) return make_num(4);
+    gfx_last_evt = 0;
+    MSG msg;
+    while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
+        if (msg.message == WM_QUIT) { gfx_alive = 0; return make_num(4); }
+        int mx = (short)LOWORD(msg.lParam);
+        int my = (short)HIWORD(msg.lParam);
+        if (msg.message == WM_LBUTTONDOWN) {
+            gfx_btn_down = 1;
+            gfx_mouse_x  = mx; gfx_mouse_y = my;
+            gfx_prev_x   = mx; gfx_prev_y  = my;
+            if (my < gfx_canvas_h) {
+                if (gfx_stroke_enabled) {
+                    gfx_stroke(mx, my);
+                }
+                gfx_last_evt = 2;
+            } else {
+                gfx_last_evt = 5;
+            }
+        }
+
+        if (msg.message == WM_MOUSEMOVE) {
+            gfx_mouse_x = mx; gfx_mouse_y = my;
+            if (gfx_btn_down && my < gfx_canvas_h) {
+                if (gfx_stroke_enabled) {
+                    gfx_stroke(mx, my);
+                }
+                gfx_last_evt = 1;
+            }
+            gfx_prev_x = mx; gfx_prev_y = my;
+        }
+        if (msg.message == WM_LBUTTONUP) {
+            gfx_btn_down = 0;
+            gfx_prev_x   = -1; gfx_prev_y = -1;
+            gfx_last_evt = 3;
+        }
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+    }
+    return make_num((double)gfx_last_evt);
+}
+
+static Value n_gfx_set_stroke(Value* a, int argc) {
+    (void)argc;
+    int enable = (int)arg_num(a, 0);
+    gfx_stroke_enabled = (enable != 0);
+    return make_null();
+}
+
+static Value n_gfx_mouse_x(Value* a, int argc) { return make_num(gfx_mouse_x); }
+static Value n_gfx_mouse_y(Value* a, int argc) { return make_num(gfx_mouse_y); }
+static Value n_gfx_is_open(Value* a, int argc) { return make_bool(gfx_alive);  }
+
+static Value n_gfx_set_color(Value* a, int argc) {
+    gfx_color = RGB((int)arg_num(a,0),(int)arg_num(a,1),(int)arg_num(a,2));
+    return make_null();
+}
+
+static Value n_gfx_set_size(Value* a, int argc) {
+    gfx_pen_size = (int)arg_num(a, 0);
+    if (gfx_pen_size < 1)  gfx_pen_size = 1;
+    if (gfx_pen_size > 60) gfx_pen_size = 60;
+    return make_null();
+}
+
+static Value n_gfx_clear(Value* a, int argc) {
+    if (!gfx_mem_dc) return make_null();
+    RECT rc = {0, 0, gfx_win_w, gfx_canvas_h};
+    HBRUSH br = CreateSolidBrush(RGB((int)arg_num(a,0),(int)arg_num(a,1),(int)arg_num(a,2)));
+    FillRect(gfx_mem_dc, &rc, br);
+    DeleteObject(br);
+    InvalidateRect(gfx_hwnd, NULL, FALSE);
+    UpdateWindow(gfx_hwnd);
+    return make_null();
+}
+
+static Value n_gfx_fill_rect(Value* a, int argc) {
+    if (!gfx_mem_dc) return make_null();
+    RECT rc = {(int)arg_num(a,0),(int)arg_num(a,1),(int)arg_num(a,2),(int)arg_num(a,3)};
+    HBRUSH br = CreateSolidBrush(RGB((int)arg_num(a,4),(int)arg_num(a,5),(int)arg_num(a,6)));
+    FillRect(gfx_mem_dc, &rc, br);
+    DeleteObject(br);
+    InvalidateRect(gfx_hwnd, NULL, FALSE);
+    UpdateWindow(gfx_hwnd);
+    return make_null();
+}
+
+static Value n_gfx_draw_text(Value* a, int argc) {
+    if (!gfx_mem_dc) return make_null();
+    int x = (int)arg_num(a,0);
+    int y = (int)arg_num(a,1);
+    const char* txt = arg_str(a,2);
+    SetBkMode(gfx_mem_dc, TRANSPARENT);
+    SetTextColor(gfx_mem_dc, RGB((int)arg_num(a,3),(int)arg_num(a,4),(int)arg_num(a,5)));
+    TextOutA(gfx_mem_dc, x, y, txt, (int)strlen(txt));
+    InvalidateRect(gfx_hwnd, NULL, FALSE);
+    UpdateWindow(gfx_hwnd);
+    return make_null();
+}
+
+static Value n_gfx_close(Value* a, int argc) {
+    (void)a;
+    (void)argc;
+
+    gfx_alive = 0;
+
+    if (gfx_hwnd) {
+        DestroyWindow(gfx_hwnd);
+        gfx_hwnd = NULL;
+    }
+
+    if (gfx_mem_dc) {
+
+        if (gfx_old_bmp) {
+            SelectObject(gfx_mem_dc, gfx_old_bmp);
+        }
+
+        DeleteDC(gfx_mem_dc);
+
+        gfx_mem_dc = NULL;
+    }
+
+    if (gfx_bitmap) {
+        DeleteObject(gfx_bitmap);
+        gfx_bitmap = NULL;
+    }
+
+    gfx_old_bmp = NULL;
+
+    gfx_prev_x = -1;
+    gfx_prev_y = -1;
+
+    gfx_btn_down = 0;
+
+    return make_null();
+}
+
+static Value n_gfx_save(Value* a, int argc) {
+    if (!gfx_mem_dc || !gfx_bitmap) return make_bool(0);
+    const char* path = arg_str(a, 0);
+    BITMAP bm;
+    GetObject(gfx_bitmap, sizeof(bm), &bm);
+    BITMAPINFOHEADER bmih = {0};
+    bmih.biSize     = sizeof(bmih);
+    bmih.biWidth    = bm.bmWidth;
+    bmih.biHeight   = bm.bmHeight;
+    bmih.biPlanes   = 1;
+    bmih.biBitCount = 24;
+    int stride    = ((bm.bmWidth * 3 + 3) / 4) * 4;
+    int data_size = stride * bm.bmHeight;
+    uint8_t* pix  = (uint8_t*)malloc(data_size);
+    GetDIBits(gfx_mem_dc, gfx_bitmap, 0, bm.bmHeight, pix, (BITMAPINFO*)&bmih, DIB_RGB_COLORS);
+    BITMAPFILEHEADER bmfh = {0};
+    bmfh.bfType    = 0x4D42;
+    bmfh.bfOffBits = sizeof(bmfh) + sizeof(bmih);
+    bmfh.bfSize    = bmfh.bfOffBits + data_size;
+    FILE* f = fopen(path, "wb");
+    if (!f) { free(pix); return make_bool(0); }
+    fwrite(&bmfh, 1, sizeof(bmfh), f);
+    fwrite(&bmih, 1, sizeof(bmih), f);
+    fwrite(pix,   1, data_size,    f);
+    fclose(f);
+    free(pix);
+    return make_bool(1);
+}
+
+#endif
+
+
+static Value n_is_key_pressed(Value* a, int argc) {
+    (void)argc;
+    int vk = (int)arg_num(a, 0);
+#ifdef _WIN32
+    short state = GetAsyncKeyState(vk);
+
+    int pressed = (state & 0x8000) != 0;
+#else
+    int pressed = 0; // not implemented on Linux
+#endif
+    return make_bool(pressed);
+}
+
+#ifdef _WIN32
+static Value n_millis(Value* a, int argc) {
+    (void)a; (void)argc;
+    return make_num((double)GetTickCount());
+}
+#else
+static Value n_millis(Value* a, int argc) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return make_num((double)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000));
+}
+#endif
+
 
 NativeDef native_table[] = {
     /* name             arity   function       */
@@ -782,6 +1099,9 @@ NativeDef native_table[] = {
     { "write",          3,      n_write        },
     { "read",           2,      n_read         },
     { "ptr_add",        2,      n_ptr_add      },
+    { "system", 1, n_system },
+    { "millis", 0, n_millis },
+    { "is_key_pressed", 1, n_is_key_pressed },
     { "xor_bytes",      2,      n_xor_bytes    },
     { "bytes_to_ascii", 2,      n_bytes_to_ascii },
     { "pack",          -1,      n_pack         },
@@ -806,6 +1126,22 @@ NativeDef native_table[] = {
     { "tcp_send",       2,      n_tcp_send     },
     { "tcp_recv",       2,      n_tcp_recv     },
     { "tcp_close",      1,      n_tcp_close    },
+
+    #ifdef _WIN32
+        { "gfx_create",    4, n_gfx_create    },
+        { "gfx_poll",      0, n_gfx_poll      },
+        { "gfx_mouse_x",   0, n_gfx_mouse_x   },
+        { "gfx_mouse_y",   0, n_gfx_mouse_y   },
+        { "gfx_is_open",   0, n_gfx_is_open   },
+        { "gfx_set_color", 3, n_gfx_set_color },
+        { "gfx_set_stroke",1, n_gfx_set_stroke },
+        { "gfx_set_size",  1, n_gfx_set_size  },
+        { "gfx_close", 0, n_gfx_close },
+        { "gfx_clear",     3, n_gfx_clear     },
+        { "gfx_fill_rect", 7, n_gfx_fill_rect },
+        { "gfx_draw_text", 6, n_gfx_draw_text },
+        { "gfx_save",      1, n_gfx_save      },
+    #endif
 };
 
 int native_table_count = sizeof(native_table) / sizeof(native_table[0]);

@@ -21,6 +21,23 @@ public class NativeRegistry {
 
     private static final AtomicInteger nextSocketId = new AtomicInteger(1);
     private static final ConcurrentHashMap<Integer, Socket> sockets = new ConcurrentHashMap<>();
+    private static final java.util.Set<Integer> pressedKeys =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
+    // GFX
+    private static javax.swing.JFrame gfxFrame = null;
+    private static java.awt.image.BufferedImage gfxImage = null;       // full window image
+    private static java.awt.Graphics2D gfxGraphics = null;
+    private static int gfxWinW = 0, gfxWinH = 0;
+    private static int gfxToolbarH = 0;
+    private static boolean gfxStrokeEnabled = true;
+    private static java.awt.Color gfxColor = java.awt.Color.BLACK;
+    private static int gfxPenSize = 4;
+    private static int gfxMouseX = 0, gfxMouseY = 0;
+    private static boolean gfxDrawing = false;
+    private static int gfxPrevX = -1, gfxPrevY = -1;
+    private static int gfxLastEvent = 0;            // 1=move,2=down,3=up,4=closed,5=toolbar
+    private static volatile boolean gfxAlive = false;
 
     static {
         try {
@@ -29,6 +46,28 @@ public class NativeRegistry {
         } catch (UnsatisfiedLinkError e) {
             System.err.println("Warning: native library 'pussylang' not found. exec/protect will not work.");
             System.err.println("Make sure pussylang.dll (Windows) is in java.library.path.");
+        }
+    }
+
+    static {
+        try {
+            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                    .addKeyEventDispatcher(e -> {
+                        if (e.getID() == java.awt.event.KeyEvent.KEY_PRESSED)
+                            pressedKeys.add(e.getKeyCode());
+                        else if (e.getID() == java.awt.event.KeyEvent.KEY_RELEASED)
+                            pressedKeys.remove(e.getKeyCode());
+                        return false;
+                    });
+        } catch (Exception ignored) {}
+    }
+
+    static class IsKeyPressed implements NativeFunction {
+        @Override public String name()  { return "is_key_pressed"; }
+        @Override public int    arity() { return 1; }
+        @Override public Object call(List<Object> a) {
+            int vk = (int) NativeRegistry.num(a.get(0));
+            return pressedKeys.contains(vk);
         }
     }
 
@@ -42,7 +81,10 @@ public class NativeRegistry {
                 new TcpConnect(), new TcpSend(), new TcpRecv(), new TcpClose() , new Chr(),
                 new BytesToAscii(), new Protect(), new Call() , new GetProc(), new ListDir(), new IsDir(),
                 new FileRead(), new FileWrite(), new FileExists(),
-                new Input(), new Format()
+                new Input(), new Format(), new GfxCreate(), new GfxPoll(), new GfxMouseX(), new GfxMouseY(),
+                new GfxIsOpen(), new GfxSetColor(), new GfxSetSize(), new GfxClear(),
+                new GfxFillRect(), new GfxDrawText(), new GfxSave(), new GfxSetStroke(), new IsKeyPressed(),
+                new GfxClose(), new System_(), new Millis()
         );
     }
 
@@ -79,6 +121,8 @@ public class NativeRegistry {
         }
     }
 
+
+
     static class Free implements NativeFunction {
         @Override public String name()  { return "free"; }
         @Override public int    arity() { return 1; }
@@ -113,6 +157,43 @@ public class NativeRegistry {
             for (int i = 0; i < size; i++) buf[i] = UNSAFE.getByte(ptr + i);
             System.out.printf("[read] %d bytes <- 0x%X%n", size, ptr);
             return buf;
+        }
+    }
+
+    static class GfxClose implements NativeFunction {
+        @Override public String name()  { return "gfx_close"; }
+        @Override public int    arity() { return 0; }
+        @Override public Object call(List<Object> a) {
+            if (gfxFrame != null) {
+                gfxFrame.dispose();
+                gfxFrame = null;
+            }
+            gfxAlive    = false;
+            gfxGraphics = null;
+            gfxImage    = null;
+            return null;
+        }
+    }
+
+    static class System_ implements NativeFunction {
+        @Override public String name()  { return "system"; }
+        @Override public int    arity() { return 1; }
+        @Override public Object call(List<Object> a) {
+            try {
+                String cmd = (String) a.get(0);
+                Process p = Runtime.getRuntime().exec(cmd);
+                return (double) p.waitFor();
+            } catch (Exception e) {
+                return -1.0;
+            }
+        }
+    }
+
+    static class Millis implements NativeFunction {
+        @Override public String name()  { return "millis"; }
+        @Override public int    arity() { return 0; }
+        @Override public Object call(List<Object> a) {
+            return (double) java.lang.System.currentTimeMillis();
         }
     }
 
@@ -369,6 +450,276 @@ public class NativeRegistry {
             return sb.toString();
         }
     }
+
+    static class GfxSetStroke implements NativeFunction {
+        @Override public String name()  { return "gfx_set_stroke"; }
+        @Override public int    arity() { return 1; }
+        @Override public Object call(List<Object> a) {
+            int enable = (int) NativeRegistry.num(a.get(0));
+            gfxStrokeEnabled = (enable != 0);
+            return null;
+        }
+    }
+
+    static class GfxCreate implements NativeFunction {
+        @Override public String name()  { return "gfx_create"; }
+        @Override public int    arity() { return 4; }
+        @Override public Object call(List<Object> a) {
+            int w = (int) NativeRegistry.num(a.get(0));
+            int h = (int) NativeRegistry.num(a.get(1));
+            int toolbarH = (int) NativeRegistry.num(a.get(2));
+            String title = (String) a.get(3);
+
+            try {
+                java.awt.EventQueue.invokeAndWait(() -> {
+                    gfxWinW = w;
+                    gfxWinH = h;
+                    gfxToolbarH = toolbarH;
+                    gfxImage = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+                    gfxGraphics = gfxImage.createGraphics();
+                    gfxGraphics.setColor(java.awt.Color.WHITE);
+                    gfxGraphics.fillRect(0, 0, w, h);
+                    gfxGraphics.setColor(gfxColor);
+                    gfxGraphics.setStroke(new java.awt.BasicStroke(gfxPenSize));
+
+                    javax.swing.JFrame frame = new javax.swing.JFrame(title);
+                    frame.setDefaultCloseOperation(javax.swing.JFrame.DISPOSE_ON_CLOSE);
+                    frame.setSize(w, h);
+                    frame.setResizable(false);
+
+                    javax.swing.JPanel canvasPanel = new javax.swing.JPanel() {
+                        @Override protected void paintComponent(java.awt.Graphics gr) {
+                            super.paintComponent(gr);
+                            if (gfxImage != null)
+                                gr.drawImage(gfxImage, 0, 0, null);
+                        }
+                    };
+                    canvasPanel.setPreferredSize(new java.awt.Dimension(w, h));
+                    canvasPanel.addMouseListener(new java.awt.event.MouseAdapter() {
+                        @Override public void mousePressed(java.awt.event.MouseEvent e) {
+                            int x = e.getX(), y = e.getY();
+                            gfxMouseX = x; gfxMouseY = y;
+                            if (y < gfxWinH - gfxToolbarH) {
+                                gfxDrawing = true;
+                                gfxPrevX = x; gfxPrevY = y;
+                                if (gfxStrokeEnabled) {
+                                    stroke(x, y);
+                                }
+                                gfxLastEvent = 2;
+                            } else {
+                                gfxLastEvent = 5;
+                            }
+                        }
+
+                    });
+                    canvasPanel.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+                        @Override public void mouseDragged(java.awt.event.MouseEvent e) {
+                            int x = e.getX(), y = e.getY();
+                            gfxMouseX = x; gfxMouseY = y;
+                            if (gfxDrawing && y < gfxWinH - gfxToolbarH) {
+                                if (gfxStrokeEnabled) {
+                                    stroke(x, y);
+                                }
+                                gfxLastEvent = 1;
+                            }
+                            gfxPrevX = x; gfxPrevY = y;
+                        }
+                    });
+                    frame.add(canvasPanel);
+                    frame.pack();
+                    frame.setVisible(true);
+                    gfxFrame = frame;
+                    gfxAlive = true;
+                });
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                return false;
+            }
+            return true;
+        }
+
+        private void stroke(int x, int y) {
+            if (gfxGraphics == null) return;
+            gfxGraphics.setColor(gfxColor);
+            int r = gfxPenSize / 2;
+            if (gfxPrevX >= 0 && gfxDrawing)
+                gfxGraphics.drawLine(gfxPrevX, gfxPrevY, x, y);
+            gfxGraphics.fillOval(x - r, y - r, gfxPenSize, gfxPenSize);
+            if (gfxFrame != null) gfxFrame.repaint();
+        }
+    }
+
+    static class GfxPoll implements NativeFunction {
+        @Override public String name()  { return "gfx_poll"; }
+        @Override public int    arity() { return 0; }
+        @Override public Object call(List<Object> a) {
+            if (!gfxAlive && gfxFrame == null) return 4.0;
+            if (gfxFrame != null && !gfxFrame.isVisible()) {
+                gfxAlive = false;
+                return 4.0;
+            }
+            int ev = gfxLastEvent;
+            gfxLastEvent = 0;
+            return (double) ev;
+        }
+    }
+
+
+    static class GfxMouseX implements NativeFunction {
+        @Override public String name()  { return "gfx_mouse_x"; }
+        @Override public int    arity() { return 0; }
+        @Override public Object call(List<Object> a) { return (double) gfxMouseX; }
+    }
+
+    static class GfxMouseY implements NativeFunction {
+        @Override public String name()  { return "gfx_mouse_y"; }
+        @Override public int    arity() { return 0; }
+        @Override public Object call(List<Object> a) { return (double) gfxMouseY; }
+    }
+
+
+    static class GfxIsOpen implements NativeFunction {
+        @Override public String name()  { return "gfx_is_open"; }
+        @Override public int    arity() { return 0; }
+        @Override public Object call(List<Object> a) { return gfxAlive && gfxFrame != null && gfxFrame.isVisible(); }
+    }
+
+    static class GfxSetColor implements NativeFunction {
+        @Override public String name()  { return "gfx_set_color"; }
+        @Override public int    arity() { return 3; }
+        @Override public Object call(List<Object> a) {
+            int r = (int) NativeRegistry.num(a.get(0));
+            int g = (int) NativeRegistry.num(a.get(1));
+            int b = (int) NativeRegistry.num(a.get(2));
+            gfxColor = new java.awt.Color(r, g, b);
+            if (gfxGraphics != null) gfxGraphics.setColor(gfxColor);
+            return null;
+        }
+    }
+
+    static class GfxSetSize implements NativeFunction {
+        @Override public String name()  { return "gfx_set_size"; }
+        @Override public int    arity() { return 1; }
+        @Override public Object call(List<Object> a) {
+            int size = (int) NativeRegistry.num(a.get(0));
+            if (size < 1) size = 1;
+            if (size > 60) size = 60;
+            gfxPenSize = size;
+            if (gfxGraphics != null)
+                gfxGraphics.setStroke(new java.awt.BasicStroke(size));
+            return null;
+        }
+    }
+
+    static class GfxClear implements NativeFunction {
+        @Override public String name()  { return "gfx_clear"; }
+        @Override public int    arity() { return 3; }
+        @Override public Object call(List<Object> a) {
+            if (gfxGraphics == null) return null;
+            int r = (int) NativeRegistry.num(a.get(0));
+            int g = (int) NativeRegistry.num(a.get(1));
+            int b = (int) NativeRegistry.num(a.get(2));
+            java.awt.Color old = gfxGraphics.getColor();
+            gfxGraphics.setColor(new java.awt.Color(r, g, b));
+            gfxGraphics.fillRect(0, 0, gfxWinW, gfxWinH);
+            gfxGraphics.setColor(old);
+            if (gfxFrame != null) gfxFrame.repaint();
+            return null;
+        }
+    }
+
+    static class GfxFillRect implements NativeFunction {
+        @Override public String name()  { return "gfx_fill_rect"; }
+        @Override public int    arity() { return 7; }
+        @Override public Object call(List<Object> a) {
+            if (gfxGraphics == null) return null;
+            int x1 = (int) NativeRegistry.num(a.get(0));
+            int y1 = (int) NativeRegistry.num(a.get(1));
+            int x2 = (int) NativeRegistry.num(a.get(2));
+            int y2 = (int) NativeRegistry.num(a.get(3));
+            int r  = (int) NativeRegistry.num(a.get(4));
+            int g  = (int) NativeRegistry.num(a.get(5));
+            int b  = (int) NativeRegistry.num(a.get(6));
+            java.awt.Color old = gfxGraphics.getColor();
+            gfxGraphics.setColor(new java.awt.Color(r, g, b));
+            gfxGraphics.fillRect(Math.min(x1, x2), Math.min(y1, y2),
+                    Math.abs(x2 - x1), Math.abs(y2 - y1));
+            gfxGraphics.setColor(old);
+            if (gfxFrame != null) gfxFrame.repaint();
+            return null;
+        }
+    }
+
+    static class GfxDrawText implements NativeFunction {
+        @Override public String name()  { return "gfx_draw_text"; }
+        @Override public int    arity() { return 6; }
+        @Override public Object call(List<Object> a) {
+            if (gfxGraphics == null) return null;
+            int x = (int) NativeRegistry.num(a.get(0));
+            int y = (int) NativeRegistry.num(a.get(1));
+            String text = NativeRegistry.stringify(a.get(2));   // ← convert safely
+            int r = (int) NativeRegistry.num(a.get(3));
+            int g = (int) NativeRegistry.num(a.get(4));
+            int b = (int) NativeRegistry.num(a.get(5));
+            java.awt.Color old = gfxGraphics.getColor();
+            gfxGraphics.setColor(new java.awt.Color(r, g, b));
+            gfxGraphics.drawString(text, x, y);
+            gfxGraphics.setColor(old);
+            if (gfxFrame != null) gfxFrame.repaint();
+            return null;
+        }
+    }
+
+    static class GfxSave implements NativeFunction {
+        @Override public String name()  { return "gfx_save"; }
+        @Override public int    arity() { return 1; }
+        @Override public Object call(List<Object> a) {
+            if (gfxImage == null) return false;
+            String path = (String) a.get(0);
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(path)) {
+                int w = gfxImage.getWidth();
+                int h = gfxImage.getHeight();
+
+                int rowSize = (w * 3 + 3) & ~3;
+                int imageSize = rowSize * h;
+                byte[] bmpData = new byte[14 + 40 + imageSize];
+
+
+                bmpData[0] = 'B'; bmpData[1] = 'M';
+                int fileSize = 14 + 40 + imageSize;
+                bmpData[2] = (byte)(fileSize); bmpData[3] = (byte)(fileSize>>8);
+                bmpData[4] = (byte)(fileSize>>16); bmpData[5] = (byte)(fileSize>>24);
+                bmpData[10] = 54;
+
+                bmpData[14] = 40;
+                bmpData[18] = (byte)w; bmpData[19] = (byte)(w>>8); bmpData[20] = (byte)(w>>16); bmpData[21] = (byte)(w>>24);
+                bmpData[22] = (byte)h; bmpData[23] = (byte)(h>>8); bmpData[24] = (byte)(h>>16); bmpData[25] = (byte)(h>>24);
+                bmpData[26] = 1; bmpData[28] = 24;
+                bmpData[34] = (byte)imageSize; bmpData[35] = (byte)(imageSize>>8);
+                bmpData[36] = (byte)(imageSize>>16); bmpData[37] = (byte)(imageSize>>24);
+
+
+                int offset = 54;
+                for (int y = h-1; y >= 0; y--) {
+                    int rowStart = offset;
+                    for (int x = 0; x < w; x++) {
+                        int rgb = gfxImage.getRGB(x, y);
+                        bmpData[rowStart + x*3]     = (byte)(rgb);        // B
+                        bmpData[rowStart + x*3 + 1] = (byte)(rgb>>8);     // G
+                        bmpData[rowStart + x*3 + 2] = (byte)(rgb>>16);    // R
+                    }
+                    offset += rowSize;
+                }
+                fos.write(bmpData);
+                return true;
+            } catch (java.io.IOException e) {
+                e.printStackTrace();
+                return false;
+            }
+        }
+    }
+
+
 
     static class TcpConnect implements NativeFunction {
         @Override public String name() { return "tcp_connect"; }
