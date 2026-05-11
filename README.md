@@ -1,6 +1,8 @@
 # PussyLang
+**Full documentation: [pussylang-docs.surge.sh](http://pussylang-docs.surge.sh/)**
 
 A dynamically typed imperative scripting language with its own bytecode compiler, Java VM, and ahead of time C backend.
+
 
 
 
