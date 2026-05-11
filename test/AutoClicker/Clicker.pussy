@@ -1,0 +1,150 @@
+
+
+var WIN_W = 320;
+var WIN_H = 220;
+
+var enabled        = 0;
+var click_interval = 100;
+var last_click_ms  = 0;
+
+var BTN_TOGGLE_X1 = 90;  var BTN_TOGGLE_Y1 = 140;
+var BTN_TOGGLE_X2 = 230; var BTN_TOGGLE_Y2 = 185;
+var BTN_DEC100_X1 = 10;  var BTN_DEC100_Y1 = 80;
+var BTN_DEC100_X2 = 65;  var BTN_DEC100_Y2 = 115;
+var BTN_DEC10_X1  = 75;  var BTN_DEC10_Y1  = 80;
+var BTN_DEC10_X2  = 130; var BTN_DEC10_Y2  = 115;
+var BTN_INC10_X1  = 190; var BTN_INC10_Y1  = 80;
+var BTN_INC10_X2  = 245; var BTN_INC10_Y2  = 115;
+var BTN_INC100_X1 = 255; var BTN_INC100_Y1 = 80;
+var BTN_INC100_X2 = 310; var BTN_INC100_Y2 = 115;
+
+func get_ms() {
+    return millis();  
+}
+
+func do_click() {
+    var user32 = get_proc("user32.dll", "mouse_event");
+    call(user32, "void", "iiiii", 2, 0, 0, 0, 0);
+    call(user32, "void", "iiiii", 4, 0, 0, 0, 0);
+}
+
+func clamp_interval() {
+    if (click_interval < 10)   { click_interval = 10; }
+    if (click_interval > 5000) { click_interval = 5000; }
+}
+
+
+func in_btn(mx, my, x1, y1, x2, y2) {
+    if (mx >= x1) {
+        if (mx <= x2) {
+            if (my >= y1) {
+                if (my <= y2) {
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+func draw_btn(x1, y1, x2, y2, label, r, g, b) {
+    gfx_fill_rect(x1, y1, x2, y2, r, g, b);
+    var cx = x1 + (x2 - x1) / 2 - 15;
+    var cy = y1 + (y2 - y1) / 2 + 5;
+    gfx_draw_text(cx, cy, label, 255, 255, 255);
+}
+
+func draw_ui() {
+    gfx_fill_rect(0, 0, WIN_W, WIN_H, 28, 28, 30);
+    gfx_draw_text(10, 22, "Auto Clicker", 160, 160, 160);
+    gfx_draw_text(10, 40, "Close window to exit", 100, 100, 100);
+
+    var lbl = str(click_interval) + " ms";
+    gfx_draw_text(130, 108, lbl, 220, 220, 220);
+
+    draw_btn(BTN_DEC100_X1, BTN_DEC100_Y1, BTN_DEC100_X2, BTN_DEC100_Y2, "-100", 55, 55, 60);
+    draw_btn(BTN_DEC10_X1,  BTN_DEC10_Y1,  BTN_DEC10_X2,  BTN_DEC10_Y2,  " -10", 50, 50, 55);
+    draw_btn(BTN_INC10_X1,  BTN_INC10_Y1,  BTN_INC10_X2,  BTN_INC10_Y2,  "+10 ", 50, 50, 55);
+    draw_btn(BTN_INC100_X1, BTN_INC100_Y1, BTN_INC100_X2, BTN_INC100_Y2, "+100", 55, 55, 60);
+
+    if (enabled == 1) {
+        draw_btn(BTN_TOGGLE_X1, BTN_TOGGLE_Y1, BTN_TOGGLE_X2, BTN_TOGGLE_Y2, "STOP", 180, 50, 50);
+        gfx_draw_text(10, 200, "RUNNING: every " + str(click_interval) + "ms", 80, 220, 80);
+    } else {
+        draw_btn(BTN_TOGGLE_X1, BTN_TOGGLE_Y1, BTN_TOGGLE_X2, BTN_TOGGLE_Y2, "START", 40, 140, 60);
+        gfx_draw_text(10, 200, "STOPPED: click START", 150, 150, 150);
+    }
+}
+
+func handle_click(mx, my) {
+    // DEC100
+    if (in_btn(mx, my, BTN_DEC100_X1, BTN_DEC100_Y1, BTN_DEC100_X2, BTN_DEC100_Y2) == 1) {
+        click_interval = click_interval - 100;
+        clamp_interval();
+        draw_ui();
+        print "Interval = " + str(click_interval) + " ms";
+        return;
+    }
+    // DEC10
+    if (in_btn(mx, my, BTN_DEC10_X1, BTN_DEC10_Y1, BTN_DEC10_X2, BTN_DEC10_Y2) == 1) {
+        click_interval = click_interval - 10;
+        clamp_interval();
+        draw_ui();
+        print "Interval = " + str(click_interval) + " ms";
+        return;
+    }
+    // INC10
+    if (in_btn(mx, my, BTN_INC10_X1, BTN_INC10_Y1, BTN_INC10_X2, BTN_INC10_Y2) == 1) {
+        click_interval = click_interval + 10;   // was +100
+        clamp_interval();
+        draw_ui();
+        print "Interval = " + str(click_interval) + " ms";
+        return;
+    }
+    // INC100
+    if (in_btn(mx, my, BTN_INC100_X1, BTN_INC100_Y1, BTN_INC100_X2, BTN_INC100_Y2) == 1) {
+        click_interval = click_interval + 100;
+        clamp_interval();
+        draw_ui();
+        print "Interval = " + str(click_interval) + " ms";
+        return;
+    }
+    // TOGGLE
+    if (in_btn(mx, my, BTN_TOGGLE_X1, BTN_TOGGLE_Y1, BTN_TOGGLE_X2, BTN_TOGGLE_Y2) == 1) {
+        if (enabled == 0) {
+            enabled = 1;
+            last_click_ms = get_ms() - click_interval;
+            print "Clicker ON at " + str(click_interval) + " ms";
+        } else {
+            enabled = 0;
+            print "Clicker OFF";
+        }
+        draw_ui();
+        return;
+    }
+}
+
+gfx_create(WIN_W, WIN_H, 0, "Auto Clicker");
+gfx_set_stroke(0);
+draw_ui();
+print "Clicker started. Use buttons to control.";
+
+var running = 1;
+while (running == 1) {
+    var evt = gfx_poll();
+    if (evt == 2) {
+        handle_click(gfx_mouse_x(), gfx_mouse_y());
+    }
+    if (gfx_is_open() == 0) { running = 0; }
+
+    if (enabled == 1) {
+        var now = get_ms();
+        if (now - last_click_ms >= click_interval) {
+            do_click();
+            last_click_ms = now;
+        }
+    }
+    sleep(8);
+}
+
+print "Clicker closed.";

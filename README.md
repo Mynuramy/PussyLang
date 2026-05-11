@@ -1,87 +1,171 @@
-
-
-
 # PussyLang
+**Full documentation: [pussylang-docs.surge.sh](http://pussylang-docs.surge.sh/)**
 
-A lightweight scripting language designed for sexy stuff.
-
-![Status](https://img.shields.io/badge/Status-Early%20Development-red.svg)
+A dynamically typed imperative scripting language with its own bytecode compiler, Java VM, and ahead of time C backend.
 
 
-## Features(some WIP)
 
-| Category                | Supported                                                                               |
-|-------------------------|-----------------------------------------------------------------------------------------|
-| **Data Types**          | Numbers (double & hex), booleans, `null`, strings, byte strings (`b"\x90\x90"`)          |
-| **Control Flow**        | `if` / `else`, `while` loops                                                            |
-| **Functions**           | First class functions, recursion, **lexical closures** with mutable upvalues             |
-| **Variable Scoping**    | Blockscoped `var` declarations, proper shadowing                                       |
-| **Execution Engines**   | Treewalk interpreter  and a **bytecode VM** with closure support             |
-| **Tooling**             | Bytecode disassembler, error messages with line numbers                                  |
-| **Native Interface**    | Easily add Java‑backed builtins                                                         |
-| **Maldev Primitives**   | `alloc`, `free`, `write`, `exec`, `read` (WIPPPPP)                                       |
 
-## Example
+---
 
-```pussy
-// Variables
+## Overview
+
+PussyLang compiles source files (`.pussy`) to bytecode (`.pbc`) which runs on a custom Java VM. The bytecode can also be compiled ahead-of-time to a native executable by transpiling to C and compiling with GCC.
+
+The language is intentionally minimal.
+
+---
+
+## Types
+
+| Type | Example |
+|------|---------|
+| Number | `42` `3.14` `-7` |
+| Boolean | `true` `false` |
+| String | `"hello"` |
+| Array | `[1, "two", true]` |
+| Bytes | `b"\x48\x65\x6C\x6C\x6F"` |
+| Function | `func foo() { ... }` |
+| Null | `null` |
+
+All numbers are doubles. Strings are immutable UTF-8. Arrays are dynamic and mixed-type. Bytes are a raw buffer type returned by native functions.
+
+---
+
+## Syntax
+
+### Variables
+
+```
 var x = 10;
-x = x + 5;
+x = 20;
+```
 
-// Control flow
-if (x > 10) {
-    print "big";
+### Control flow
+
+```
+if (condition) {
+    // ...
 } else {
-    print "small";
-}
-
-while (x < 20) {
-    print x;
-    x = x + 1;
-}
-
-// Functions and Closures
-func makeCounter() {
-    var count = 0;
-    func inc() {
-        count = count + 1;
-        return count;
+    if (other_condition) {
+        // ...
     }
-    return inc;
 }
 
-var c = makeCounter();
-print c();  // 1
-print c();  // 2
+while (condition) {
+    // ...
+}
 ```
 
+No `for` loops. No `else if`. No `&&` or `||` For now but switch and for loops in work!
 
+### Functions
 
+```
+func add(a, b) {
+    return a + b;
+}
 
-## Running the Language
+var result = add(1, 2);
+```
 
-### Run a script file(on VM)
+Functions are first class values. Recursion is fully supported.
+
+### Arrays
+
+```
+var arr = [10, 20, 30];
+print arr[0];
+arr[1] = 99;
+```
+
+---
+
+## Native Functions
+
+All builtins are available globally with no imports.
+
+**Utility**
+```
+str(val)                   // convert to string
+len(str_or_array_or_bytes) // length
+chr(number)                // ASCII code to single char
+hex(number)                // number to hex string
+format("Hi {}!", name)     // string interpolation
+input("prompt: ")          // read line from stdin
+clock()                    // unix timestamp
+sleep(ms)                  // sleep N milliseconds
+cast(value, "int")         // truncate to integer
+cast(value, "bytes")       // string to byte buffer
+```
+
+**File I/O**
+```
+file_read(path)            // returns bytes
+file_write(path, bytes)    // writes bytes, returns count
+file_exists(path)          // returns bool
+list_dir(path)             // returns array of filenames
+is_dir(path)               // returns bool
+```
+
+**Bytes**
+```
+xor_bytes(bytes, key)      // XOR every byte with key (0-255)
+b64encode(bytes)           // bytes to base64 string
+b64decode(string)          // base64 string to bytes
+bytes_to_ascii(bytes, max) // bytes to printable string
+pack(fmt, ...)             // binary pack  B H I Q, < > endian
+mutable_bytes(bytes)       // copy of bytes buffer
+```
+
+**Networking**
+```
+tcp_connect(host, port)    // returns socket handle
+tcp_send(handle, bytes)    // send bytes
+tcp_recv(handle, maxsize)  // receive bytes
+tcp_close(handle)          // close socket
+```
+
+**Memory**
+```
+alloc(size)                // allocate N bytes, returns pointer
+free(ptr)                  // free pointer
+write(ptr, bytes, count)   // write bytes to address
+read(ptr, size)            // read bytes from address
+ptr_add(ptr, offset)       // pointer arithmetic
+```
+
+**Windows**
+```
+get_proc(dll, funcname)    // get function pointer from DLL
+call(ptr, rettype, argtypes, ...)  // call native function pointer
+protect(ptr, size, flags)  // VirtualProtect / mprotect
+exec(ptr)                  // execute 
+```
+
+---
+
+## Running
+
+**Interpreter (Java VM)**
 ```bash
-java pussylang.Main example.pussy
+java pussylang.Main --vm yourfile.pussy
 ```
 
-### Disassemble bytecode
+**AOT compilation**
 ```bash
-java pussylang.Main --dis example.pussy
+java pbc_to_c yourfile.pbc bytecode_embedded.c
+gcc vm.c natives.c -o program.exe -lm -lws2_32
+./program.exe
 ```
 
-### Run with tree‑walk interpreter (legacy)
-```bash
-java pussylang.Main --interpret example.pussy
-```
+---
 
-## Contributing
+## What it doesn't have for now
 
-This is currently a solo project focused on learning and red team tooling.  
-Ideas, feedback, and contributions are welcome especially in these areas:
+No `for` loops. No `else if`. No `&&` / `||`. No `try`/`catch`. No classes. No modules. No ternary operator. No `break` or `continue`.
 
-- Maldev specific built ins
-- Better syntax design
-- A testing framework
+
+
 
 
