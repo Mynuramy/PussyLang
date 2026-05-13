@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="PussyLang Logo">
+</p>
+
 # PussyLang
 **Full documentation: [pussylang-docs.surge.sh](http://pussylang-docs.surge.sh/)**
 
