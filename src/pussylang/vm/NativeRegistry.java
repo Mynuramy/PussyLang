@@ -39,13 +39,18 @@ public class NativeRegistry {
     private static int gfxLastEvent = 0;            // 1=move,2=down,3=up,4=closed,5=toolbar
     private static volatile boolean gfxAlive = false;
 
+    public static boolean NATIVE_LOADED = false;
+
     static {
+        NATIVE_LOADED = false;
+        String dllPath = "path to the dll of pussylang.c in natives";
+        //MOST OF THE CODE STILL WILL WORK WITHOUT FUCKING DLL IN VM VERSION UNLESS U WANAN EXECUTE SHIT WHICH U DONT SO FUCK OFF WITH THIS OK!
         try {
-            System.loadLibrary("pussylang");
-            System.out.println("[NativeRegistry] Loaded pussylang native library.");
+            System.load(dllPath);
+            NATIVE_LOADED = true;
+            System.out.println("[SUCCESS] pussylang.dll loaded successfully!");
         } catch (UnsatisfiedLinkError e) {
-            System.err.println("Warning: native library 'pussylang' not found. exec/protect will not work.");
-            System.err.println("Make sure pussylang.dll (Windows) is in java.library.path.");
+            System.err.println("[ERROR] Failed to load DLL: " + e.getMessage());
         }
     }
 
