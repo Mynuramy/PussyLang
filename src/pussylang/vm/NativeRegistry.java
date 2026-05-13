@@ -44,7 +44,7 @@ public class NativeRegistry {
     static {
         NATIVE_LOADED = false;
         String dllPath = "path to the dll of pussylang.c in natives";
-        //MOST OF THE CODE STILL WILL WORK WITHOUT FUCKING DLL IN VM VERSION UNLESS U WANAN EXECUTE SHIT WHICH U DONT SO FUCK OFF WITH THIS OK!
+        //MOST OF THE CODE STILL WILL WORK WITHOUT FUCKING DLL, IN VM VERSION UNLESS U WANAN EXECUTE SHIT WHICH U DONT SO FUCK OFF WITH THIS OK!
         try {
             System.load(dllPath);
             NATIVE_LOADED = true;
