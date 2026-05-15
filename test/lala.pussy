@@ -1,1 +1,46 @@
+// HTTP server in PussyLang
+// Usage: run with Java VM or compile AOT
 
+var CRLF = chr(13) + chr(10);
+
+func respond(status, body) {
+    var r = "HTTP/1.1 " + status + CRLF;
+    r = r + "Content-Type: text/plain" + CRLF;
+    r = r + "Content-Length: " + str(len(cast(body, "bytes"))) + CRLF;
+    r = r + "Connection: close" + CRLF;
+    r = r + CRLF + body;
+    return r;
+}
+
+func handle(raw) {
+    var path = http_parse_path(raw);
+    print "-> " + path;
+
+    if (path == "/") {
+        return respond("200 OK", "Hello from PussyLang!");
+    }
+    if (path == "/ping") {
+        return respond("200 OK", "pong");
+    }
+    if (path == "/time") {
+        return respond("200 OK", str(cast(clock(), "int")));
+    }
+    if (path == "/info") {
+        return respond("200 OK", "PussyLang HTTP Server\nRoutes: / /ping /time /info");
+    }
+    return respond("404 Not Found", "not found: " + path);
+}
+
+var server = tcp_listen(8080);
+print "Server running at http://localhost:8080";
+print "Press Ctrl+C to stop";
+
+while (1 == 1) {
+    var client = tcp_accept(server);
+    var raw = tcp_recv(client, 4096);
+    if (raw != null && len(raw) > 0) {
+        var response = handle(raw);
+        tcp_send(client, cast(response, "bytes"));
+    }
+    tcp_close(client);
+}
