@@ -776,6 +776,89 @@ static Value n_system(Value* a, int argc) {
 }
 
 
+static Value n_tcp_listen(Value* a, int argc) {
+    init_sockets();
+    int port = (int)arg_num(a, 0);
+
+    sock_t s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s == SOCK_INVALID) native_error("tcp_listen: socket() failed");
+
+    int opt = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt));
+
+    struct sockaddr_in addr = {0};
+    addr.sin_family      = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port        = htons((uint16_t)port);
+
+    if (bind(s, (struct sockaddr*)&addr, sizeof(addr)) == SOCK_ERR) {
+#ifdef _WIN32
+        closesocket(s);
+#else
+        close(s);
+#endif
+        native_error("tcp_listen: bind() failed");
+    }
+    if (listen(s, 10) == SOCK_ERR) {
+#ifdef _WIN32
+        closesocket(s);
+#else
+        close(s);
+#endif
+        native_error("tcp_listen: listen() failed");
+    }
+
+    int handle = alloc_socket_slot(s);
+    printf("[tcp] listening on :%d (handle=%d)\n", port, handle);
+    return make_num((double)handle);
+}
+
+static Value n_tcp_accept(Value* a, int argc) {
+    init_sockets();
+    sock_t server = get_socket((int)arg_num(a, 0));
+
+    struct sockaddr_in client_addr;
+#ifdef _WIN32
+    int addr_len = sizeof(client_addr);
+#else
+    socklen_t addr_len = sizeof(client_addr);
+#endif
+    sock_t client = accept(server, (struct sockaddr*)&client_addr, &addr_len);
+    if (client == SOCK_INVALID) return make_num(-1);
+
+    int handle = alloc_socket_slot(client);
+    printf("[tcp] accepted (handle=%d)\n", handle);
+    return make_num((double)handle);
+}
+
+static Value n_http_parse_path(Value* args, int argc) {
+    (void)argc;
+    int dlen = 0;
+    uint8_t* data = arg_bytes(args, 0, &dlen);
+    int i = 0;
+
+    while (i < dlen && data[i] != ' ') i++;
+    if (i >= dlen) return make_str("/");
+    i++;
+    char* path_buf = malloc(256);
+    int pos = 0;
+    while (i < dlen && pos < 255) {
+        uint8_t b = data[i];
+        if (b == ' ' || b == '\r' || b == '\n') break;
+        path_buf[pos++] = (char)b;
+        i++;
+    }
+    path_buf[pos] = '\0';
+    Value result = make_str(path_buf);
+    free(path_buf);
+    if (pos == 0 || strcmp(result.str, "") == 0) {
+        free((void*)result.str);
+        return make_str("/");
+    }
+    return result;
+}
+
+
 
 #ifdef _WIN32
 
@@ -1117,6 +1200,9 @@ NativeDef native_table[] = {
     { "exec",           1,      n_exec         },
     { "protect",        3,      n_protect      },
     { "get_proc",       2,      n_get_proc     },
+    { "tcp_listen",  1, n_tcp_listen },
+    { "tcp_accept",  1, n_tcp_accept },
+    { "http_parse_path", 1, n_http_parse_path },
     { "call",          -1,      n_call         },
     { "inject",         2,      n_inject       },
     { "cast",           2,      n_cast         },

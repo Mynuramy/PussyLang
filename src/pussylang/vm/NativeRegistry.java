@@ -23,6 +23,8 @@ public class NativeRegistry {
     private static final ConcurrentHashMap<Integer, Socket> sockets = new ConcurrentHashMap<>();
     private static final java.util.Set<Integer> pressedKeys =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    private static final ConcurrentHashMap<Integer, java.net.ServerSocket> serverSockets =
+            new ConcurrentHashMap<>();
 
     // GFX
     private static javax.swing.JFrame gfxFrame = null;
@@ -43,7 +45,7 @@ public class NativeRegistry {
 
     static {
         NATIVE_LOADED = false;
-        String dllPath = "path to the dll of pussylang.c in natives";
+        String dllPath = "C:\\Users\\migue\\Documents\\random\\PussyLangCompilar\\native\\pussylang.dll";
         //MOST OF THE CODE STILL WILL WORK WITHOUT FUCKING DLL IN VM VERSION UNLESS U WANAN EXECUTE SHIT WHICH U DONT SO FUCK OFF WITH THIS OK!
         // THIS IS BECAUSE LIKE THE EXC ALLOC  FREE THOSE TYPE SHIT NEED THE C DLL AND IF U WANT THAT IN THE VM DO THAT URSELF!
         try {
@@ -90,7 +92,7 @@ public class NativeRegistry {
                 new Input(), new Format(), new GfxCreate(), new GfxPoll(), new GfxMouseX(), new GfxMouseY(),
                 new GfxIsOpen(), new GfxSetColor(), new GfxSetSize(), new GfxClear(),
                 new GfxFillRect(), new GfxDrawText(), new GfxSave(), new GfxSetStroke(), new IsKeyPressed(),
-                new GfxClose(), new System_(), new Millis()
+                new GfxClose(), new System_(), new Millis(),new TcpListen(), new TcpAccept(),  new HttpParsePath()
         );
     }
 
@@ -257,6 +259,38 @@ public class NativeRegistry {
         @Override public Object call(List<Object> a) {
             return java.nio.file.Files.exists(
                     java.nio.file.Paths.get((String) a.get(0)));
+        }
+    }
+
+    static class TcpListen implements NativeFunction {
+        @Override public String name()  { return "tcp_listen"; }
+        @Override public int    arity() { return 1; }
+        @Override public Object call(List<Object> a) {
+            int port = (int) NativeRegistry.num(a.get(0));
+            try {
+                java.net.ServerSocket ss = new java.net.ServerSocket(port);
+                int id = nextSocketId.getAndIncrement();
+                serverSockets.put(id, ss);
+                System.out.printf("[tcp] listening on :%d (handle=%d)%n", port, id);
+                return (double) id;
+            } catch (IOException e) { throw new VMError("tcp_listen: " + e.getMessage()); }
+        }
+    }
+
+    static class TcpAccept implements NativeFunction {
+        @Override public String name()  { return "tcp_accept"; }
+        @Override public int    arity() { return 1; }
+        @Override public Object call(List<Object> a) {
+            int handle = (int) NativeRegistry.num(a.get(0));
+            java.net.ServerSocket ss = serverSockets.get(handle);
+            if (ss == null) throw new VMError("Invalid server handle: " + handle);
+            try {
+                Socket client = ss.accept();
+                int id = nextSocketId.getAndIncrement();
+                sockets.put(id, client);
+                System.out.printf("[tcp] accepted (handle=%d)%n", id);
+                return (double) id;
+            } catch (IOException e) { throw new VMError("tcp_accept: " + e.getMessage()); }
         }
     }
 
@@ -804,6 +838,29 @@ public class NativeRegistry {
                 throw new VMError("TCP close failed: " + e.getMessage());
             }
             return null;
+        }
+    }
+
+    static class HttpParsePath implements NativeFunction {
+        @Override public String name() { return "http_parse_path"; }
+        @Override public int arity() { return 1; }
+        @Override public Object call(List<Object> args) {
+            byte[] data = bytes(args.get(0));
+            int i = 0;
+            int len = data.length;
+
+            while (i < len && data[i] != ' ') i++;
+            if (i >= len) return "/";
+            i++;
+            StringBuilder path = new StringBuilder();
+            while (i < len) {
+                byte b = data[i];
+                if (b == ' ' || b == '\r' || b == '\n') break;
+                path.append((char) b);
+                i++;
+            }
+            String p = path.toString();
+            return p.isEmpty() ? "/" : p;
         }
     }
 
