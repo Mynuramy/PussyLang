@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * registers every native builtin into the VMss global table.
- * each builtin is its own selfcontained static class.
+ * each builtin is its own selfcontained static class!
  */
 public class NativeRegistry {
 
